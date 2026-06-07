@@ -38,6 +38,48 @@ Work must be done on the `develop` branch unless explicitly instructed otherwise
 
 ---
 
+## Workspace-aware behavior
+
+This repository may be opened individually or inside a multi-repository workspace.
+
+Expected workspace structure:
+
+```text
+robotic-assist-child-workspace/
+├── AGENT.md
+├── robotic-assist-child-prompts/
+├── robotic-assist-child-server/
+├── robotic-assist-child-mobile/
+└── robotic-assist-child-rpi/
+```
+
+When running from the workspace, the prompts repository is expected to be a sibling directory:
+
+```text
+../robotic-assist-child-prompts
+```
+
+The server must support:
+
+```env
+PROMPTS_REPOSITORY_PATH=../robotic-assist-child-prompts
+```
+
+When running through Docker Compose, mount the prompts repository as read-only:
+
+```yaml
+volumes:
+  - ../robotic-assist-child-prompts:/app/prompts:ro
+```
+
+Do not duplicate prompt files inside this server repository unless explicitly requested for tests or fixtures.
+
+Do not create mobile, Raspberry Pi or prompt repository files inside this server repository.
+
+If a task requires changes in another repository, stop and report the required cross-repository change instead of implementing it here.
+
+---
+
 ## Mandatory stack
 
 Use:
@@ -399,6 +441,14 @@ GET  /v1/auth/me
 
 Interactions must support authenticated users or device tokens.
 
+For early MVP development, a configurable local development bypass may be added:
+
+```env
+DEV_AUTH_DISABLED=true
+```
+
+This must never be enabled by default for production-like environments.
+
 ---
 
 ## Memory behavior
@@ -448,6 +498,12 @@ The server must load prompts from:
 
 ```env
 PROMPTS_REPOSITORY_PATH=/app/prompts
+```
+
+For workspace development, also support:
+
+```env
+PROMPTS_REPOSITORY_PATH=../robotic-assist-child-prompts
 ```
 
 Each loaded prompt must include:
@@ -655,6 +711,13 @@ The gateway must:
 
 Clients should call the gateway, not the server directly.
 
+The compose file should mount the prompts repository read-only when executed from the workspace:
+
+```yaml
+volumes:
+  - ../robotic-assist-child-prompts:/app/prompts:ro
+```
+
 ---
 
 ## Tests
@@ -696,6 +759,24 @@ Follow:
 
 ---
 
+## MVP priority
+
+For the earliest Felipe-facing MVP, prioritize this vertical slice first:
+
+```text
+server health
+prompt loading and reload
+fake text interaction
+mobile client integration through gateway
+safe fake response from Cubinho
+```
+
+Do not start by implementing everything at once.
+
+Do not block the MVP on real OpenRouter, real ElevenLabs, real image generation, complex auth, memory vector search, Kubernetes, or Raspberry Pi hardware integration.
+
+---
+
 ## Change policy
 
 Do not commit automatically.
@@ -708,11 +789,13 @@ Before finishing, report:
 - tests run;
 - known limitations.
 
+When working from the multi-repository workspace, report changes grouped by repository.
+
 ---
 
 ## Validation commands
 
-Expected local validation:
+Expected local validation from the server repository:
 
 ```bash
 docker compose up --build
