@@ -18,3 +18,7 @@ class TextInteraction:
     response_text: str
     created_at: datetime
     device_id: str | None = None
+    expression: str = "happy"
+    intent: str = "chat"
+    image_prompt: str | None = None
+    status: str = "accepted"

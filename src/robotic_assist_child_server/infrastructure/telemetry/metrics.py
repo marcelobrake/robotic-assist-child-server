@@ -1,0 +1,45 @@
+"""Best-effort OpenTelemetry metrics helpers."""
+from __future__ import annotations
+
+from typing import Any
+
+try:  # pragma: no cover - depends on optional OTel runtime wiring
+    from opentelemetry import metrics
+
+    _meter = metrics.get_meter("robotic_assist_child_server.conversation")
+    _request_count = _meter.create_counter("conversation.request.count")
+    _error_count = _meter.create_counter("conversation.error.count")
+    _duration_ms = _meter.create_histogram("conversation.duration_ms")
+    _fallback_count = _meter.create_counter("conversation.fallback.count")
+except Exception:  # pragma: no cover - no-op if OTel is unavailable
+    _request_count = None
+    _error_count = None
+    _duration_ms = None
+    _fallback_count = None
+
+
+def _attrs(provider: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    attributes: dict[str, Any] = {"provider": provider}
+    if extra:
+        attributes.update(extra)
+    return attributes
+
+
+def record_conversation_request(provider: str) -> None:
+    if _request_count is not None:
+        _request_count.add(1, _attrs(provider))
+
+
+def record_conversation_error(provider: str, *, error_type: str) -> None:
+    if _error_count is not None:
+        _error_count.add(1, _attrs(provider, {"error_type": error_type}))
+
+
+def record_conversation_duration(provider: str, duration_ms: float) -> None:
+    if _duration_ms is not None:
+        _duration_ms.record(duration_ms, _attrs(provider))
+
+
+def record_conversation_fallback(provider: str, *, reason: str) -> None:
+    if _fallback_count is not None:
+        _fallback_count.add(1, _attrs(provider, {"reason": reason}))

@@ -22,3 +22,18 @@ class PromptsNotLoadedError(DomainError):
 class UnsafeContentError(DomainError):
     code = "unsafe_content"
     http_status = 422
+
+
+class UserAlreadyExistsError(DomainError):
+    code = "user_already_exists"
+    http_status = 409
+
+
+class InvalidCredentialsError(DomainError):
+    code = "invalid_credentials"
+    http_status = 401
+
+
+class AuthenticationRequiredError(DomainError):
+    code = "authentication_required"
+    http_status = 401

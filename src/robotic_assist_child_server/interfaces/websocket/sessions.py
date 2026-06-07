@@ -31,6 +31,10 @@ def build_ws_router() -> APIRouter:
                             "interaction_id": interaction.interaction_id,
                             "session_id": interaction.session_id,
                             "response_text": interaction.response_text,
+                            "assistant_text": interaction.response_text,
+                            "expression": interaction.expression,
+                            "intent": interaction.intent,
+                            "image_prompt": interaction.image_prompt,
                         }
                     )
                 except DomainError as exc:

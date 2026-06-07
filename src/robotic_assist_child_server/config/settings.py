@@ -32,11 +32,48 @@ class Settings(BaseSettings):
     # Local development auth bypass (never default-on in prod-like envs).
     dev_auth_disabled: bool = False
 
-    # Prepared connection settings (unused by the MVP slice).
+    # Authentication (access token only; refresh token deferred).
+    jwt_secret: str = "dev-insecure-secret-change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expires_minutes: int = 60
+
+    # Relational database. Falls back to a local SQLite file when unset, so the
+    # MVP runs without PostgreSQL; Docker Compose provides POSTGRES_DSN.
+    database_url: str | None = None
     postgres_dsn: str | None = None
+
+    # MongoDB for per-user memory. When unset, an in-memory repository is used
+    # so the MVP/tests run without MongoDB; Docker Compose provides MONGODB_URI.
     mongodb_uri: str | None = None
+    mongodb_database: str = "rac"
+
+    # Conversation provider. Fake remains the default so local development runs
+    # without external API keys.
+    conversation_provider: str = "fake"
+    conversation_temperature: float = 0.4
+    conversation_max_tokens: int = 700
+    conversation_timeout_seconds: float = 30.0
+
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_chat_model: str = "openai/gpt-5.4-nano"
+    openrouter_chat_model_fallback: str = "openai/gpt-5.4-mini"
+    openrouter_http_referer: str = "http://localhost:8080"
+    openrouter_app_title: str = "Robotic Assist Child"
+    openrouter_fallback_to_fake: bool = True
+    openrouter_max_retries: int = 2
+
+    # Prepared connection settings (unused by the MVP slice).
     redis_url: str | None = None
     otel_exporter_otlp_endpoint: str | None = None
+
+    @property
+    def resolved_database_url(self) -> str:
+        return (
+            self.database_url
+            or self.postgres_dsn
+            or "sqlite+aiosqlite:///./rac_dev.db"
+        )
 
 
 @lru_cache

@@ -10,7 +10,10 @@ class Role(str, Enum):
 
 class ClientType(str, Enum):
     MOBILE = "mobile"
+    RASPBERRY = "raspberry"
     RPI = "rpi"
+    WEB = "web"
+    TEST = "test"
     UNKNOWN = "unknown"
 
 

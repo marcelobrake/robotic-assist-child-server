@@ -1,29 +1,46 @@
-"""Memory ports (interfaces) prepared for the MongoDB-backed memory system.
+"""Memory ports (interfaces) for the MongoDB-backed memory system.
 
-Not implemented in the MVP slice; defined here so future use cases can depend
-on stable contracts (MongoMemoryRepository, SimpleMemoryRetriever, ...).
+Concrete adapters: MongoMemoryRepository (infrastructure/mongodb),
+SimpleMemoryRetriever and RuleBasedMemoryUpdater (application/services).
 """
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
+
+from ...domain.entities import Memory
 
 
 @runtime_checkable
 class MemoryRepository(Protocol):
-    async def save(self, memory: dict[str, Any]) -> None: ...
-    async def list_for_user(self, user_id: str) -> list[dict[str, Any]]: ...
+    """Persistence port for per-user memories."""
+
+    async def save(self, memory: Memory) -> None: ...
+
+    async def list_for_user(
+        self, user_id: str, *, limit: int | None = None
+    ) -> list[Memory]: ...
 
 
 @runtime_checkable
 class MemoryRetriever(Protocol):
-    async def retrieve(self, user_id: str, session_id: str) -> list[dict[str, Any]]: ...
+    """Selects which memories to inject into the prompt for a user/session."""
+
+    async def retrieve(
+        self, user_id: str, session_id: str | None = None
+    ) -> list[Memory]: ...
 
 
 @runtime_checkable
 class MemoryUpdater(Protocol):
-    async def evaluate(self, user_id: str, session_id: str, interaction: dict[str, Any]) -> None: ...
+    """Evaluates an interaction and creates/updates memories as needed."""
+
+    async def evaluate(
+        self, *, user_id: str, session_id: str | None, input_text: str
+    ) -> list[Memory]: ...
 
 
 @runtime_checkable
 class MemoryPolicy(Protocol):
-    def should_store(self, candidate: dict[str, Any]) -> bool: ...
+    """Decides whether a candidate memory should be stored."""
+
+    def should_store(self, candidate: Memory) -> bool: ...

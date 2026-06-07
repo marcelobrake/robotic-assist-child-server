@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config.providers import build_container
 from .config.settings import Settings, get_settings
+from .infrastructure.database import create_all
 from .infrastructure.telemetry import init_telemetry
 from .interfaces.http.v1 import build_v1_router
 from .interfaces.websocket import build_ws_router
@@ -29,9 +30,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "failed to load prompts on startup",
                 extra={"event_name": "prompt.load_all"},
             )
+        # Best-effort schema creation so the MVP keeps working even if the
+        # database is unavailable (Alembic migrations are future work).
+        try:
+            await create_all(container.db_engine)
+        except Exception:  # pragma: no cover - startup logging
+            logger.exception(
+                "failed to initialize database on startup",
+                extra={"event_name": "database.init"},
+            )
         app.state.container = container
         app.state.settings = settings
-        yield
+        try:
+            yield
+        finally:
+            aclose = getattr(container.memory_repository, "aclose", None)
+            if aclose is not None:
+                try:
+                    await aclose()
+                except Exception:  # pragma: no cover - shutdown logging
+                    logger.exception(
+                        "failed to close memory repository",
+                        extra={"event_name": "memory.close"},
+                    )
+            await container.db_engine.dispose()
 
     app = FastAPI(
         title="Robotic Assist Child Server",

@@ -6,7 +6,7 @@ from ....application.use_cases import TextInteractionInput
 from ....config.providers import Container
 from ....shared.datetime import to_rfc3339
 from ....shared.errors import DomainError
-from .deps import get_container
+from .deps import get_container, resolve_interaction_user_id
 from .schemas import TextInteractionRequest, TextInteractionResponse
 
 router = APIRouter(prefix="/interactions", tags=["interactions"])
@@ -16,15 +16,17 @@ router = APIRouter(prefix="/interactions", tags=["interactions"])
 async def create_text_interaction(
     payload: TextInteractionRequest,
     container: Container = Depends(get_container),
+    resolved_user_id: str | None = Depends(resolve_interaction_user_id),
 ) -> TextInteractionResponse:
     try:
         interaction = await container.handle_text_interaction.execute(
             TextInteractionInput(
                 text=payload.text,
                 session_id=payload.session_id,
-                user_id=payload.user_id,
+                user_id=resolved_user_id or payload.user_id,
                 client_type=payload.client_type,
                 device_id=payload.device_id,
+                metadata=payload.metadata,
             )
         )
     except DomainError as exc:
@@ -37,6 +39,11 @@ async def create_text_interaction(
         client_type=interaction.client_type,
         input_text=interaction.input_text,
         response_text=interaction.response_text,
+        assistant_text=interaction.response_text,
+        expression=interaction.expression,
+        intent=interaction.intent,
+        image_prompt=interaction.image_prompt,
+        status=interaction.status,
         created_at=to_rfc3339(interaction.created_at),
         device_id=interaction.device_id,
     )

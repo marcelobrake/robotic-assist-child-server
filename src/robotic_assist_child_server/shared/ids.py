@@ -15,3 +15,10 @@ def new_session_id() -> str:
 
 def new_user_id() -> str:
     return _new_id("usr")
+
+
+def new_memory_id() -> str:
+    return _new_id("mem")
+
+
+DEV_USER_ID = "dev_user"
