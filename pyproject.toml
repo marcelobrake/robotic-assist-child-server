@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robotic-assist-child-server"
+version = "0.1.0"
+description = "Backend server (FastAPI) for the Robotic Assist Child project"
+requires-python = ">=3.13"
+readme = "README.md"
+license = { file = "LICENSE" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q"

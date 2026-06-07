@@ -1,0 +1,15 @@
+version: "0.1.0"
+language: "pt-BR"
+prompts:
+  - id: "system.child_robot_base"
+    path: "system/child_robot_base.md"
+    required: true
+  - id: "system.safety_rules"
+    path: "system/safety_rules.md"
+    required: true
+  - id: "system.response_contract"
+    path: "system/response_contract.md"
+    required: true
+  - id: "interaction.conversation"
+    path: "interaction/conversation.md"
+    required: true
