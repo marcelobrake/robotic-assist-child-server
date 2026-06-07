@@ -21,4 +21,8 @@ def new_memory_id() -> str:
     return _new_id("mem")
 
 
+def new_image_id() -> str:
+    return _new_id("img")
+
+
 DEV_USER_ID = "dev_user"

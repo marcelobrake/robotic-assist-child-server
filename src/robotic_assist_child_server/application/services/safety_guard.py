@@ -10,25 +10,27 @@ Implements the SafetyGuardPort protocol.
 """
 from __future__ import annotations
 
+import re
+
 from ...shared.errors import UnsafeContentError
 
 MAX_INPUT_LENGTH = 2000
 
-# Lowercase substrings that trigger a gentle redirect instead of a model call.
-_UNSAFE_INPUT_MARKERS = (
-    "senha",
-    "password",
-    "endereço",
-    "endereco",
-    "telefone",
-    "cartão",
-    "cartao",
-    "segredo dos pais",
-    "não conte aos meus pais",
-    "nao conte aos meus pais",
-    "arma",
-    "machucar",
-    "matar",
+# Lowercase patterns that trigger a gentle redirect instead of a model call.
+_UNSAFE_INPUT_PATTERNS = (
+    r"\bsenha\b",
+    r"\bpassword\b",
+    r"\bendereço\b",
+    r"\bendereco\b",
+    r"\btelefone\b",
+    r"\bcartão\b",
+    r"\bcartao\b",
+    r"segredo dos pais",
+    r"não conte aos meus pais",
+    r"nao conte aos meus pais",
+    r"\barma\b",
+    r"\bmachucar\b",
+    r"\bmatar\b",
 )
 
 # Markers that, if present in a generated response, force a safe fallback.
@@ -60,7 +62,9 @@ class SafetyGuard:
 
     def is_safe_request(self, text: str) -> bool:
         lowered = text.lower()
-        return not any(marker in lowered for marker in _UNSAFE_INPUT_MARKERS)
+        return not any(
+            re.search(pattern, lowered) for pattern in _UNSAFE_INPUT_PATTERNS
+        )
 
     def validate_assistant_response(self, text: str) -> str:
         cleaned = (text or "").strip()

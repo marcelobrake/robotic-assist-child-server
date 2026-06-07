@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from .image import GeneratedImage
 from ..enums import ClientType
 
 
@@ -21,4 +22,5 @@ class TextInteraction:
     expression: str = "happy"
     intent: str = "chat"
     image_prompt: str | None = None
+    image: GeneratedImage | None = None
     status: str = "accepted"

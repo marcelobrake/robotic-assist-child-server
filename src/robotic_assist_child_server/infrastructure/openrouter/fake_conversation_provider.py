@@ -23,6 +23,7 @@ logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 _GREETING_MARKERS = ("oi", "olá", "ola", "bom dia", "boa tarde", "boa noite")
+_IMAGE_MARKERS = ("desenha", "desenhe", "desenhar", "imagem", "foto", "pinte")
 _QUESTION_MARKER = "?"
 
 
@@ -47,7 +48,14 @@ class FakeConversationProvider:
                 },
             )
 
-            if any(text.startswith(marker) for marker in _GREETING_MARKERS):
+            if any(marker in text for marker in _IMAGE_MARKERS):
+                response = ConversationResponse(
+                    text="Posso imaginar isso com você! Vou preparar um desenho seguro.",
+                    expression="happy",
+                    intent="generate_image",
+                    image_prompt=request.user_text.strip(),
+                )
+            elif any(text.startswith(marker) for marker in _GREETING_MARKERS):
                 response = ConversationResponse(
                     text="Oi! Eu sou o Cubinho. Que bom falar com você! Vamos brincar?",
                     expression="happy",

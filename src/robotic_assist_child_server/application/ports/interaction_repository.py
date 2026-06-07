@@ -14,3 +14,8 @@ class InteractionRepository(Protocol):
 
     async def get(self, interaction_id: str) -> TextInteraction | None:
         ...
+
+    async def list_recent_by_session(
+        self, session_id: str, *, limit: int = 8
+    ) -> list[TextInteraction]:
+        ...

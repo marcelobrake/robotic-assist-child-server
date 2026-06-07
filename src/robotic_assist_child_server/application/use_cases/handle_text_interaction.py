@@ -28,6 +28,10 @@ from ..ports.conversation_provider import (
     ConversationRequest,
     ConversationResponse,
 )
+from ..ports.image_generation import (
+    ImageGenerationProvider,
+    ImageGenerationRequest,
+)
 from ..ports.interaction_repository import InteractionRepository
 from ..ports.memory import MemoryRetriever, MemoryUpdater
 from ..services.prompt_composer import PromptComposer
@@ -35,6 +39,16 @@ from ..services.safety_guard import SafetyGuard
 
 _logger = get_logger(__name__)
 _tracer = trace.get_tracer(__name__)
+_SESSION_HISTORY_LIMIT = 8
+_RETRY_MARKERS = (
+    "tente novamente",
+    "tenta novamente",
+    "tentar novamente",
+    "tente de novo",
+    "tenta de novo",
+    "de novo",
+    "novamente",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +71,11 @@ class HandleTextInteraction:
         interaction_repository: InteractionRepository | None = None,
         memory_retriever: MemoryRetriever | None = None,
         memory_updater: MemoryUpdater | None = None,
+        image_provider: ImageGenerationProvider | None = None,
+        image_generation_enabled: bool = False,
+        image_default_aspect_ratio: str = "1:1",
+        image_default_size: str = "800x800",
+        image_output_format: str = "png",
     ) -> None:
         self._composer = composer
         self._provider = provider
@@ -64,6 +83,11 @@ class HandleTextInteraction:
         self._interactions = interaction_repository
         self._memory_retriever = memory_retriever
         self._memory_updater = memory_updater
+        self._image_provider = image_provider
+        self._image_generation_enabled = image_generation_enabled
+        self._image_default_aspect_ratio = image_default_aspect_ratio
+        self._image_default_size = image_default_size
+        self._image_output_format = image_output_format
 
     async def execute(self, data: TextInteractionInput) -> TextInteraction:
         safe_input = self._safety.validate_input_text(data.text)
@@ -82,27 +106,48 @@ class HandleTextInteraction:
             )
         else:
             memories = await self._retrieve_memories(memory_user_id, session_id)
+            history = await self._retrieve_session_history(session_id)
+            retry_target = self._select_retry_target(safe_input, history)
+            model_input = retry_target.input_text if retry_target else safe_input
             messages = self._composer.compose_messages(
-                input_text=safe_input, memories=memories
+                input_text=model_input, memories=memories, history=history
             )
             system_prompt = messages[0].content if messages else ""
             with _tracer.start_as_current_span("conversation.generate") as span:
                 span.set_attribute("client_type", data.client_type.value)
+                span.set_attribute("conversation.has_history", bool(history))
+                span.set_attribute("conversation.retry", retry_target is not None)
+                if retry_target is not None:
+                    span.set_attribute(
+                        "conversation.retry_interaction_id",
+                        retry_target.interaction_id,
+                    )
                 generated = await self._provider.generate(
                     ConversationRequest(
                         system_prompt=system_prompt,
-                        user_text=safe_input,
+                        user_text=model_input,
                         session_id=session_id,
                         user_id=user_id,
                         messages=messages,
                         metadata={
                             **data.metadata,
                             "client_type": data.client_type.value,
+                            **(
+                                {"retry_of_interaction_id": retry_target.interaction_id}
+                                if retry_target is not None
+                                else {}
+                            ),
                         },
                     )
                 )
 
         response_text = self._safety.validate_assistant_response(generated.text)
+        image = await self._maybe_generate_image(
+            generated=generated,
+            data=data,
+            session_id=session_id,
+            user_id=user_id,
+        )
 
         interaction = TextInteraction(
             interaction_id=new_interaction_id(),
@@ -116,6 +161,7 @@ class HandleTextInteraction:
             expression=generated.expression,
             intent=generated.intent,
             image_prompt=generated.image_prompt,
+            image=image,
             status="accepted",
         )
 
@@ -137,6 +183,40 @@ class HandleTextInteraction:
             )
             return []
 
+    async def _retrieve_session_history(self, session_id: str):
+        if self._interactions is None:
+            return []
+        try:
+            return await self._interactions.list_recent_by_session(
+                session_id, limit=_SESSION_HISTORY_LIMIT
+            )
+        except Exception:  # pragma: no cover - best-effort, never break the reply
+            _logger.exception(
+                "session history retrieval failed",
+                extra={"event_name": "conversation.history", "session_id": session_id},
+            )
+            return []
+
+    def _select_retry_target(self, input_text: str, history):
+        if not self._is_retry_request(input_text) or not history:
+            return None
+        for interaction in reversed(history):
+            if (
+                interaction.intent == "generate_image"
+                and interaction.image_prompt
+                and interaction.image is None
+            ):
+                return interaction
+        for interaction in reversed(history):
+            if not self._is_retry_request(interaction.input_text):
+                return interaction
+        return None
+
+    @staticmethod
+    def _is_retry_request(input_text: str) -> bool:
+        lowered = input_text.strip().lower()
+        return any(marker in lowered for marker in _RETRY_MARKERS)
+
     async def _update_memories(self, user_id, session_id, input_text) -> None:
         if not user_id or self._memory_updater is None:
             return
@@ -149,3 +229,68 @@ class HandleTextInteraction:
                 "memory update failed",
                 extra={"event_name": "memory.update", "user_id": user_id},
             )
+
+    async def _maybe_generate_image(
+        self,
+        *,
+        generated: ConversationResponse,
+        data: TextInteractionInput,
+        session_id: str,
+        user_id: str,
+    ):
+        if (
+            generated.intent != "generate_image"
+            or not generated.image_prompt
+            or not self._image_generation_enabled
+            or self._image_provider is None
+        ):
+            return None
+
+        with _tracer.start_as_current_span("image.generate") as span:
+            span.set_attribute("client_type", data.client_type.value)
+            span.set_attribute("image.enabled", True)
+            try:
+                with _tracer.start_as_current_span("image.prompt.validate"):
+                    image_prompt = self._safety.validate_input_text(
+                        generated.image_prompt
+                    )
+                    if not self._safety.is_safe_request(image_prompt):
+                        _logger.warning(
+                            "unsafe image prompt rejected",
+                            extra={
+                                "event_name": "image.prompt.validate",
+                                "session_id": session_id,
+                                "user_id": user_id,
+                                "attributes": {"reason": "unsafe_prompt"},
+                            },
+                        )
+                        return None
+
+                return await self._image_provider.generate(
+                    ImageGenerationRequest(
+                        prompt=image_prompt,
+                        session_id=session_id,
+                        user_id=user_id,
+                        aspect_ratio=data.metadata.get(
+                            "aspect_ratio", self._image_default_aspect_ratio
+                        ),
+                        size=data.metadata.get("size", self._image_default_size),
+                        output_format=data.metadata.get(
+                            "output_format", self._image_output_format
+                        ),
+                        metadata={
+                            **data.metadata,
+                            "client_type": data.client_type.value,
+                        },
+                    )
+                )
+            except Exception:  # pragma: no cover - provider fallback is primary path
+                _logger.exception(
+                    "image generation failed",
+                    extra={
+                        "event_name": "image.generate",
+                        "session_id": session_id,
+                        "user_id": user_id,
+                    },
+                )
+                return None

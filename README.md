@@ -38,6 +38,7 @@ fallback seguro para o provider fake. ElevenLabs permanece fora deste slice.
 - `GET  /v1/prompts/{prompt_id}`
 - `POST /v1/prompts/reload`
 - `POST /v1/interactions/text`
+- `GET  /v1/images/{image_id}`
 - `GET  /v1/memories`
 - `POST /v1/memories`
 - `WS   /v1/ws/sessions/{session_id}`
@@ -147,6 +148,13 @@ retorna o contrato estruturado:
 O modelo padrão é `OPENROUTER_CHAT_MODEL`. Para solicitar o modelo alternativo
 em uma chamada específica, envie `metadata.response_detail=elaborated`.
 
+O backend mantém um histórico curto em memória por `session_id` enquanto o
+processo estiver rodando. Esse histórico é enviado ao provider de conversa para
+dar continuidade à sessão. Se a criança pedir algo como `tente novamente`, o
+backend reexecuta a última solicitação sem sucesso da sessão, priorizando
+geração de imagem que terminou com `image=null`; se não houver falha, reexecuta
+a última solicitação normal.
+
 Teste com fake:
 
 ```bash
@@ -188,6 +196,98 @@ curl -X POST http://localhost:8080/v1/interactions/text \
 Se OpenRouter falhar, expirar, retornar erro transitório ou estiver sem API key,
 o servidor usa `FakeConversationProvider` quando
 `OPENROUTER_FALLBACK_TO_FAKE=true`.
+
+## Geração de imagem: fake ou OpenRouter
+
+A geração de imagem fica desligada por padrão. O backend só tenta gerar imagem
+quando a resposta de conversa vier com `intent=generate_image` e
+`image_prompt` preenchido.
+
+Configuração local segura com fake:
+
+```env
+IMAGE_GENERATION_ENABLED=true
+IMAGE_PROVIDER=fake
+IMAGE_STORAGE_PATH=/app/data/images
+PUBLIC_IMAGE_BASE_URL=http://localhost:8080/v1/images
+IMAGE_OUTPUT_FORMAT=png
+IMAGE_DEFAULT_ASPECT_RATIO=1:1
+IMAGE_DEFAULT_SIZE=800x800
+```
+
+Configuração com OpenRouter:
+
+```env
+IMAGE_GENERATION_ENABLED=true
+IMAGE_PROVIDER=openrouter
+OPENROUTER_API_KEY=<sua-chave>
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_IMAGE_MODEL=google/gemini-3.1-flash-image-preview
+OPENROUTER_HTTP_REFERER=http://localhost:8080
+OPENROUTER_APP_TITLE=Robotic Assist Child
+IMAGE_TIMEOUT_SECONDS=60
+IMAGE_MAX_RETRIES=1
+IMAGE_FALLBACK_TO_FAKE=true
+```
+
+O modelo de imagem usado é `google/gemini-3.1-flash-image-preview`
+(Nano Banana 2). O prompt de imagem é validado pelo `SafetyGuard` antes de
+chamar o provider. Se a geração falhar e `IMAGE_FALLBACK_TO_FAKE=true`, o
+servidor usa `FakeImageGenerationProvider`.
+
+Para testar pelo celular apontando para o notebook, ajuste a URL pública das
+imagens para o IP da máquina, por exemplo:
+
+```env
+PUBLIC_IMAGE_BASE_URL=http://192.168.0.155:8080/v1/images
+OPENROUTER_HTTP_REFERER=http://192.168.0.155:8080
+```
+
+`IMAGE_DEFAULT_SIZE=800x800` é enviado no prompt de geração. Para Gemini, o
+request também usa `image_config.aspect_ratio=1:1` e `image_config.image_size=1K`,
+que é a resolução suportada mais próxima no OpenRouter.
+
+Não commite `.env` nem chaves OpenRouter.
+
+Teste:
+
+```bash
+IMAGE_GENERATION_ENABLED=true \
+IMAGE_PROVIDER=fake \
+docker compose up --build
+
+curl -X POST http://localhost:8080/v1/interactions/text \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "session_local",
+    "client_type": "test",
+    "input_text": "Cubinho, desenha um foguete azul indo para a lua.",
+    "metadata": {
+      "device_id": "local_test",
+      "locale": "pt-BR"
+    }
+  }'
+```
+
+Quando houver imagem, a resposta inclui:
+
+```json
+{
+  "image": {
+    "image_id": "img_123",
+    "image_url": "http://localhost:8080/v1/images/img_123",
+    "content_type": "image/png",
+    "provider": "fake",
+    "model": "fake-image-placeholder",
+    "created_at": "2026-06-07T20:00:00Z",
+    "expires_at": null
+  }
+}
+```
+
+O arquivo fica temporariamente em `IMAGE_STORAGE_PATH` e é servido por
+`GET /v1/images/{image_id}`. S3/CDN e múltiplas imagens ficam fora desta fase.
+No Docker Compose local, `./data/images` é montado em `/app/data/images`.
 
 ## Prompts
 

@@ -24,9 +24,12 @@ from ..application.use_cases import (
 )
 from ..infrastructure.auth import Argon2Hasher, JwtService
 from ..infrastructure.database import create_engine, create_session_factory
+from ..infrastructure.images import LocalImageStore
 from ..infrastructure.openrouter import (
     FakeConversationProvider,
+    FakeImageGenerationProvider,
     OpenRouterConversationProvider,
+    OpenRouterImageGenerationProvider,
 )
 from ..infrastructure.prompts import FilePromptLoader
 from ..infrastructure.repositories import (
@@ -46,6 +49,8 @@ class Container:
     prompt_composer: PromptComposer
     safety_guard: SafetyGuard
     conversation_provider: FakeConversationProvider | OpenRouterConversationProvider
+    image_store: LocalImageStore
+    image_provider: FakeImageGenerationProvider | OpenRouterImageGenerationProvider
     interaction_repository: InMemoryInteractionRepository
     user_repository: SqlAlchemyUserRepository
     memory_repository: MemoryRepository
@@ -93,6 +98,29 @@ def _build_conversation_provider(
     return fake_provider
 
 
+def _build_image_provider(
+    settings: Settings,
+    image_store: LocalImageStore,
+    fake_provider: FakeImageGenerationProvider,
+) -> FakeImageGenerationProvider | OpenRouterImageGenerationProvider:
+    provider_name = settings.image_provider.strip().lower()
+    if provider_name == "openrouter":
+        return OpenRouterImageGenerationProvider(
+            api_key=settings.openrouter_api_key,
+            base_url=settings.openrouter_base_url,
+            image_model=settings.openrouter_image_model,
+            http_referer=settings.openrouter_http_referer,
+            app_title=settings.openrouter_app_title,
+            timeout_seconds=settings.image_timeout_seconds,
+            max_retries=settings.image_max_retries,
+            fallback_to_fake=settings.image_fallback_to_fake,
+            output_format=settings.image_output_format,
+            image_store=image_store,
+            fake_provider=fake_provider,
+        )
+    return fake_provider
+
+
 def build_container(settings: Settings) -> Container:
     prompt_loader = FilePromptLoader(settings.prompts_repository_path)
     prompt_composer = PromptComposer(prompt_loader)
@@ -101,6 +129,13 @@ def build_container(settings: Settings) -> Container:
     conversation_provider = _build_conversation_provider(
         settings, fake_conversation_provider
     )
+    image_store = LocalImageStore(
+        storage_path=settings.image_storage_path,
+        public_base_url=settings.public_image_base_url,
+        default_output_format=settings.image_output_format,
+    )
+    fake_image_provider = FakeImageGenerationProvider(image_store=image_store)
+    image_provider = _build_image_provider(settings, image_store, fake_image_provider)
     interaction_repository = InMemoryInteractionRepository()
 
     db_engine = create_engine(settings.resolved_database_url)
@@ -125,6 +160,11 @@ def build_container(settings: Settings) -> Container:
         interaction_repository=interaction_repository,
         memory_retriever=memory_retriever,
         memory_updater=memory_updater,
+        image_provider=image_provider,
+        image_generation_enabled=settings.image_generation_enabled,
+        image_default_aspect_ratio=settings.image_default_aspect_ratio,
+        image_default_size=settings.image_default_size,
+        image_output_format=settings.image_output_format,
     )
     register_user = RegisterUser(
         user_repository=user_repository,
@@ -145,6 +185,8 @@ def build_container(settings: Settings) -> Container:
         prompt_composer=prompt_composer,
         safety_guard=safety_guard,
         conversation_provider=conversation_provider,
+        image_store=image_store,
+        image_provider=image_provider,
         interaction_repository=interaction_repository,
         user_repository=user_repository,
         memory_repository=memory_repository,

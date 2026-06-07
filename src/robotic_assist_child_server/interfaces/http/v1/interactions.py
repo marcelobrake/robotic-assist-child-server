@@ -4,12 +4,31 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ....application.use_cases import TextInteractionInput
 from ....config.providers import Container
+from ....domain.entities import GeneratedImage
 from ....shared.datetime import to_rfc3339
 from ....shared.errors import DomainError
 from .deps import get_container, resolve_interaction_user_id
-from .schemas import TextInteractionRequest, TextInteractionResponse
+from .schemas import (
+    GeneratedImageResponse,
+    TextInteractionRequest,
+    TextInteractionResponse,
+)
 
 router = APIRouter(prefix="/interactions", tags=["interactions"])
+
+
+def _image_response(image: GeneratedImage | None) -> GeneratedImageResponse | None:
+    if image is None:
+        return None
+    return GeneratedImageResponse(
+        image_id=image.image_id,
+        image_url=image.image_url,
+        content_type=image.content_type,
+        provider=image.provider,
+        model=image.model,
+        created_at=to_rfc3339(image.created_at),
+        expires_at=to_rfc3339(image.expires_at) if image.expires_at else None,
+    )
 
 
 @router.post("/text", response_model=TextInteractionResponse)
@@ -43,6 +62,7 @@ async def create_text_interaction(
         expression=interaction.expression,
         intent=interaction.intent,
         image_prompt=interaction.image_prompt,
+        image=_image_response(interaction.image),
         status=interaction.status,
         created_at=to_rfc3339(interaction.created_at),
         device_id=interaction.device_id,

@@ -27,11 +27,24 @@ services:
       OPENROUTER_APP_TITLE: ${OPENROUTER_APP_TITLE:-Robotic Assist Child}
       OPENROUTER_FALLBACK_TO_FAKE: ${OPENROUTER_FALLBACK_TO_FAKE:-true}
       OPENROUTER_MAX_RETRIES: ${OPENROUTER_MAX_RETRIES:-2}
+      IMAGE_PROVIDER: ${IMAGE_PROVIDER:-fake}
+      IMAGE_GENERATION_ENABLED: ${IMAGE_GENERATION_ENABLED:-false}
+      OPENROUTER_IMAGE_MODEL: ${OPENROUTER_IMAGE_MODEL:-google/gemini-3.1-flash-image-preview}
+      IMAGE_STORAGE_PATH: ${IMAGE_STORAGE_PATH:-/app/data/images}
+      PUBLIC_IMAGE_BASE_URL: ${PUBLIC_IMAGE_BASE_URL:-http://localhost:8080/v1/images}
+      IMAGE_OUTPUT_FORMAT: ${IMAGE_OUTPUT_FORMAT:-png}
+      IMAGE_TIMEOUT_SECONDS: ${IMAGE_TIMEOUT_SECONDS:-60}
+      IMAGE_MAX_RETRIES: ${IMAGE_MAX_RETRIES:-1}
+      IMAGE_FALLBACK_TO_FAKE: ${IMAGE_FALLBACK_TO_FAKE:-true}
+      IMAGE_DEFAULT_ASPECT_RATIO: ${IMAGE_DEFAULT_ASPECT_RATIO:-1:1}
+      IMAGE_DEFAULT_SIZE: ${IMAGE_DEFAULT_SIZE:-800x800}
       REDIS_URL: redis://redis:6379/0
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     volumes:
       # Prompts repository mounted read-only from the sibling repo.
       - ../robotic-assist-child-prompts:/app/prompts:ro
+      # Local generated images, temporary until S3/CloudFront is implemented.
+      - ./data/images:/app/data/images
     expose:
       - "8000"
     ports:

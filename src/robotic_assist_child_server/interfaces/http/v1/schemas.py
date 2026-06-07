@@ -115,6 +115,16 @@ class TextInteractionRequest(BaseModel):
         return normalized
 
 
+class GeneratedImageResponse(BaseModel):
+    image_id: str
+    image_url: str
+    content_type: str
+    provider: str
+    model: str
+    created_at: str
+    expires_at: str | None = None
+
+
 class TextInteractionResponse(BaseModel):
     interaction_id: str
     session_id: str
@@ -126,6 +136,7 @@ class TextInteractionResponse(BaseModel):
     expression: str
     intent: str
     image_prompt: str | None = None
+    image: GeneratedImageResponse | None = None
     status: str
     created_at: str
     device_id: str | None = None

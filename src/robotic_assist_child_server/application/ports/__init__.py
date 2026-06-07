@@ -11,6 +11,12 @@ from .conversation_provider import (
     ConversationResponse,
 )
 from .interaction_repository import InteractionRepository
+from .image_generation import (
+    ImageGenerationProvider,
+    ImageGenerationRequest,
+    ImageStoragePort,
+    StoredImage,
+)
 from .memory import MemoryPolicy, MemoryRepository, MemoryRetriever, MemoryUpdater
 from .prompt_repository import PromptRepository
 from .safety_guard import SafetyGuardPort
@@ -24,6 +30,9 @@ __all__ = [
     "ConversationRequest",
     "ConversationResponse",
     "InteractionRepository",
+    "ImageGenerationProvider",
+    "ImageGenerationRequest",
+    "ImageStoragePort",
     "MemoryPolicy",
     "MemoryRepository",
     "MemoryRetriever",
@@ -32,6 +41,7 @@ __all__ = [
     "PromptRepository",
     "SafetyGuardPort",
     "SpeechToTextProvider",
+    "StoredImage",
     "TextToSpeechProvider",
     "TokenServicePort",
     "UserRepository",

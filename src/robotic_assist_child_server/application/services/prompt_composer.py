@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from opentelemetry import trace
 
 from ..ports.conversation_provider import ConversationMessage
-from ...domain.entities import Memory
+from ...domain.entities import Memory, TextInteraction
 from ..ports.prompt_repository import PromptRepository
 
 _tracer = trace.get_tracer(__name__)
@@ -52,13 +52,31 @@ class PromptComposer:
             return "\n\n".join(parts)
 
     def compose_messages(
-        self, *, input_text: str, memories: Sequence[Memory] | None = None
+        self,
+        *,
+        input_text: str,
+        memories: Sequence[Memory] | None = None,
+        history: Sequence[TextInteraction] | None = None,
     ) -> tuple[ConversationMessage, ...]:
         system_prompt = self.compose_system_prompt(memories=memories)
-        return (
-            ConversationMessage(role="system", content=system_prompt),
-            ConversationMessage(role="user", content=input_text.strip()),
-        )
+        messages: list[ConversationMessage] = [
+            ConversationMessage(role="system", content=system_prompt)
+        ]
+        for interaction in history or ():
+            if interaction.input_text.strip():
+                messages.append(
+                    ConversationMessage(
+                        role="user", content=interaction.input_text.strip()
+                    )
+                )
+            if interaction.response_text.strip():
+                messages.append(
+                    ConversationMessage(
+                        role="assistant", content=interaction.response_text.strip()
+                    )
+                )
+        messages.append(ConversationMessage(role="user", content=input_text.strip()))
+        return tuple(messages)
 
     @staticmethod
     def _render_memories(memories: Sequence[Memory] | None) -> str:

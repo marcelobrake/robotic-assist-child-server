@@ -2,6 +2,36 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from robotic_assist_child_server.application.ports import (
+    ConversationRequest,
+    ConversationResponse,
+)
+from robotic_assist_child_server.application.services.prompt_composer import (
+    PromptComposer,
+)
+from robotic_assist_child_server.application.services.safety_guard import SafetyGuard
+from robotic_assist_child_server.application.use_cases import (
+    HandleTextInteraction,
+    TextInteractionInput,
+)
+from robotic_assist_child_server.infrastructure.repositories import (
+    InMemoryInteractionRepository,
+)
+
+
+class _NoPromptRepository:
+    def get(self, prompt_id: str):
+        return None
+
+
+class _CapturingConversationProvider:
+    def __init__(self) -> None:
+        self.requests: list[ConversationRequest] = []
+
+    async def generate(self, request: ConversationRequest) -> ConversationResponse:
+        self.requests.append(request)
+        return ConversationResponse(text="Resposta segura.", intent="chat")
+
 
 def test_text_interaction_returns_safe_response(client: TestClient) -> None:
     response = client.post("/v1/interactions/text", json={"text": "Oi Cubinho!"})
@@ -82,3 +112,27 @@ def test_text_interaction_uses_configured_openrouter_provider_without_key(
 
     assert response.status_code == 200
     assert response.json()["response_text"]
+
+
+async def test_text_interaction_sends_session_history_to_provider() -> None:
+    provider = _CapturingConversationProvider()
+    repository = InMemoryInteractionRepository()
+    use_case = HandleTextInteraction(
+        composer=PromptComposer(_NoPromptRepository()),
+        provider=provider,
+        safety_guard=SafetyGuard(),
+        interaction_repository=repository,
+    )
+
+    await use_case.execute(
+        TextInteractionInput(text="Oi Cubinho!", session_id="session_history")
+    )
+    await use_case.execute(
+        TextInteractionInput(text="Você lembra do oi?", session_id="session_history")
+    )
+
+    second_request = provider.requests[-1]
+    messages = [(message.role, message.content) for message in second_request.messages]
+    assert ("user", "Oi Cubinho!") in messages
+    assert ("assistant", "Resposta segura.") in messages
+    assert messages[-1] == ("user", "Você lembra do oi?")

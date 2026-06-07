@@ -12,6 +12,7 @@ FIXTURE_PROMPTS = Path(__file__).parent / "fixtures" / "prompts"
 
 
 def _base_settings(**overrides: object) -> Settings:
+    image_storage_path = overrides.pop("image_storage_path", "/tmp/rac-test-images")
     values = {
         "prompts_repository_path": str(FIXTURE_PROMPTS),
         "deployment_environment": "test",
@@ -22,14 +23,18 @@ def _base_settings(**overrides: object) -> Settings:
         "dev_auth_disabled": False,
         "conversation_provider": "fake",
         "openrouter_api_key": None,
+        "image_provider": "fake",
+        "image_generation_enabled": False,
+        "image_storage_path": str(image_storage_path),
+        "public_image_base_url": "http://testserver/v1/images",
     }
     values.update(overrides)
     return Settings(**values)
 
 
 @pytest.fixture
-def settings() -> Settings:
-    return _base_settings()
+def settings(tmp_path: Path) -> Settings:
+    return _base_settings(image_storage_path=tmp_path / "images")
 
 
 @pytest.fixture
@@ -40,8 +45,10 @@ def client(settings: Settings) -> TestClient:
 
 
 @pytest.fixture
-def dev_settings() -> Settings:
-    return _base_settings(dev_auth_disabled=True)
+def dev_settings(tmp_path: Path) -> Settings:
+    return _base_settings(
+        dev_auth_disabled=True, image_storage_path=tmp_path / "images"
+    )
 
 
 @pytest.fixture

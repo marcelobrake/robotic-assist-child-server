@@ -63,6 +63,20 @@ class Settings(BaseSettings):
     openrouter_fallback_to_fake: bool = True
     openrouter_max_retries: int = 2
 
+    # Image generation. Disabled by default; fake provider keeps local
+    # development and tests independent from external APIs.
+    image_provider: str = "fake"
+    image_generation_enabled: bool = False
+    openrouter_image_model: str = "google/gemini-3.1-flash-image-preview"
+    image_storage_path: str = "/app/data/images"
+    public_image_base_url: str = "http://localhost:8080/v1/images"
+    image_output_format: str = "png"
+    image_timeout_seconds: float = 60.0
+    image_max_retries: int = 1
+    image_fallback_to_fake: bool = True
+    image_default_aspect_ratio: str = "1:1"
+    image_default_size: str = "800x800"
+
     # Prepared connection settings (unused by the MVP slice).
     redis_url: str | None = None
     otel_exporter_otlp_endpoint: str | None = None

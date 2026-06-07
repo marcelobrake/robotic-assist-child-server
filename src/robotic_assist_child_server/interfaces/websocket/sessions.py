@@ -35,6 +35,15 @@ def build_ws_router() -> APIRouter:
                             "expression": interaction.expression,
                             "intent": interaction.intent,
                             "image_prompt": interaction.image_prompt,
+                            "image": None
+                            if interaction.image is None
+                            else {
+                                "image_id": interaction.image.image_id,
+                                "image_url": interaction.image.image_url,
+                                "content_type": interaction.image.content_type,
+                                "provider": interaction.image.provider,
+                                "model": interaction.image.model,
+                            },
                         }
                     )
                 except DomainError as exc:

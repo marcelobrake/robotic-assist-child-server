@@ -4,6 +4,7 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 PyYAML==6.0.2
 httpx==0.28.1
+Pillow==12.2.0
 SQLAlchemy==2.0.36
 greenlet==3.5.1
 psycopg[binary]==3.2.3
