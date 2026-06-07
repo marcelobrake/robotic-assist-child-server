@@ -95,6 +95,7 @@ class TextInteractionRequest(BaseModel):
     user_id: str | None = None
     client_type: ClientType = ClientType.UNKNOWN
     device_id: str | None = None
+    generate_audio: bool = False
     metadata: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="before")
@@ -125,6 +126,17 @@ class GeneratedImageResponse(BaseModel):
     expires_at: str | None = None
 
 
+class GeneratedAudioResponse(BaseModel):
+    audio_id: str
+    audio_url: str
+    content_type: str
+    duration_ms: int | None = None
+    provider: str
+    model: str
+    created_at: str
+    expires_at: str | None = None
+
+
 class TextInteractionResponse(BaseModel):
     interaction_id: str
     session_id: str
@@ -137,6 +149,7 @@ class TextInteractionResponse(BaseModel):
     intent: str
     image_prompt: str | None = None
     image: GeneratedImageResponse | None = None
+    audio: GeneratedAudioResponse | None = None
     status: str
     created_at: str
     device_id: str | None = None

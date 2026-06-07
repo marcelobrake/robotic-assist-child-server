@@ -21,7 +21,13 @@ from .memory import MemoryPolicy, MemoryRepository, MemoryRetriever, MemoryUpdat
 from .prompt_repository import PromptRepository
 from .safety_guard import SafetyGuardPort
 from .security import PasswordHasherPort, TokenServicePort
-from .speech import SpeechToTextProvider, TextToSpeechProvider
+from .speech import (
+    AudioStoragePort,
+    SpeechSynthesisRequest,
+    SpeechToTextProvider,
+    StoredAudio,
+    TextToSpeechProvider,
+)
 from .user_repository import UserRepository
 
 __all__ = [
@@ -29,6 +35,7 @@ __all__ = [
     "ConversationMessage",
     "ConversationRequest",
     "ConversationResponse",
+    "AudioStoragePort",
     "InteractionRepository",
     "ImageGenerationProvider",
     "ImageGenerationRequest",
@@ -40,7 +47,9 @@ __all__ = [
     "PasswordHasherPort",
     "PromptRepository",
     "SafetyGuardPort",
+    "SpeechSynthesisRequest",
     "SpeechToTextProvider",
+    "StoredAudio",
     "StoredImage",
     "TextToSpeechProvider",
     "TokenServicePort",

@@ -16,6 +16,10 @@ try:  # pragma: no cover - depends on optional OTel runtime wiring
     _image_duration_ms = _meter.create_histogram("image.duration_ms")
     _image_fallback_count = _meter.create_counter("image.fallback.count")
     _image_serve_count = _meter.create_counter("image.serve.count")
+    _tts_request_count = _meter.create_counter("tts.request.count")
+    _tts_error_count = _meter.create_counter("tts.error.count")
+    _tts_duration_ms = _meter.create_histogram("tts.duration_ms")
+    _audio_serve_count = _meter.create_counter("audio.serve.count")
 except Exception:  # pragma: no cover - no-op if OTel is unavailable
     _request_count = None
     _error_count = None
@@ -26,6 +30,10 @@ except Exception:  # pragma: no cover - no-op if OTel is unavailable
     _image_duration_ms = None
     _image_fallback_count = None
     _image_serve_count = None
+    _tts_request_count = None
+    _tts_error_count = None
+    _tts_duration_ms = None
+    _audio_serve_count = None
 
 
 def _attrs(provider: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -78,3 +86,23 @@ def record_image_fallback(provider: str, *, reason: str) -> None:
 def record_image_serve(*, found: bool) -> None:
     if _image_serve_count is not None:
         _image_serve_count.add(1, {"found": found})
+
+
+def record_tts_request(provider: str) -> None:
+    if _tts_request_count is not None:
+        _tts_request_count.add(1, _attrs(provider))
+
+
+def record_tts_error(provider: str, *, error_type: str) -> None:
+    if _tts_error_count is not None:
+        _tts_error_count.add(1, _attrs(provider, {"error_type": error_type}))
+
+
+def record_tts_duration(provider: str, duration_ms: float) -> None:
+    if _tts_duration_ms is not None:
+        _tts_duration_ms.record(duration_ms, _attrs(provider))
+
+
+def record_audio_serve(*, found: bool) -> None:
+    if _audio_serve_count is not None:
+        _audio_serve_count.add(1, {"found": found})

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from .audio import GeneratedAudio
 from .image import GeneratedImage
 from ..enums import ClientType
 
@@ -23,4 +24,5 @@ class TextInteraction:
     intent: str = "chat"
     image_prompt: str | None = None
     image: GeneratedImage | None = None
+    audio: GeneratedAudio | None = None
     status: str = "accepted"

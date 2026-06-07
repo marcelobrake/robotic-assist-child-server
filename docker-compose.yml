@@ -38,6 +38,17 @@ services:
       IMAGE_FALLBACK_TO_FAKE: ${IMAGE_FALLBACK_TO_FAKE:-true}
       IMAGE_DEFAULT_ASPECT_RATIO: ${IMAGE_DEFAULT_ASPECT_RATIO:-1:1}
       IMAGE_DEFAULT_SIZE: ${IMAGE_DEFAULT_SIZE:-800x800}
+      TTS_PROVIDER: ${TTS_PROVIDER:-fake}
+      TTS_ENABLED: ${TTS_ENABLED:-false}
+      TTS_OUTPUT_FORMAT: ${TTS_OUTPUT_FORMAT:-mp3_44100_128}
+      TTS_STORAGE_PATH: ${TTS_STORAGE_PATH:-/app/data/audio}
+      PUBLIC_AUDIO_BASE_URL: ${PUBLIC_AUDIO_BASE_URL:-http://localhost:8080/v1/audio}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_BASE_URL: ${ELEVENLABS_BASE_URL:-https://api.elevenlabs.io}
+      ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID:-}
+      ELEVENLABS_TTS_MODEL: ${ELEVENLABS_TTS_MODEL:-eleven_flash_v2_5}
+      ELEVENLABS_TTS_TIMEOUT_SECONDS: ${ELEVENLABS_TTS_TIMEOUT_SECONDS:-30}
+      ELEVENLABS_TTS_MAX_RETRIES: ${ELEVENLABS_TTS_MAX_RETRIES:-2}
       REDIS_URL: redis://redis:6379/0
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     volumes:
@@ -45,6 +56,8 @@ services:
       - ../robotic-assist-child-prompts:/app/prompts:ro
       # Local generated images, temporary until S3/CloudFront is implemented.
       - ./data/images:/app/data/images
+      # Local generated TTS audio, temporary until S3/CloudFront is implemented.
+      - ./data/audio:/app/data/audio
     expose:
       - "8000"
     ports:

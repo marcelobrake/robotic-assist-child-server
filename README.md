@@ -39,6 +39,7 @@ fallback seguro para o provider fake. ElevenLabs permanece fora deste slice.
 - `POST /v1/prompts/reload`
 - `POST /v1/interactions/text`
 - `GET  /v1/images/{image_id}`
+- `GET  /v1/audio/{audio_id}`
 - `GET  /v1/memories`
 - `POST /v1/memories`
 - `WS   /v1/ws/sessions/{session_id}`
@@ -288,6 +289,89 @@ Quando houver imagem, a resposta inclui:
 O arquivo fica temporariamente em `IMAGE_STORAGE_PATH` e é servido por
 `GET /v1/images/{image_id}`. S3/CDN e múltiplas imagens ficam fora desta fase.
 No Docker Compose local, `./data/images` é montado em `/app/data/images`.
+
+## Áudio (TTS): fake ou ElevenLabs
+
+A geração de áudio é **opcional** e **desligada por padrão**. O contrato textual
+não muda: quando o áudio não é gerado, a resposta traz `"audio": null`. O áudio
+só é sintetizado quando a requisição envia `"generate_audio": true` **e**
+`TTS_ENABLED=true`. O texto enviado ao TTS é a resposta do assistente já
+validada pelo `SafetyGuard`. O áudio é melhor-esforço: uma falha do ElevenLabs
+nunca quebra a resposta textual (retorna `audio: null`).
+
+Provider fake (sem chave, ideal para dev/testes — gera um WAV curto local):
+
+```env
+TTS_ENABLED=true
+TTS_PROVIDER=fake
+TTS_STORAGE_PATH=/app/data/audio
+PUBLIC_AUDIO_BASE_URL=http://localhost:8080/v1/audio
+```
+
+Provider ElevenLabs (chamada HTTP real):
+
+```env
+TTS_ENABLED=true
+TTS_PROVIDER=elevenlabs
+TTS_OUTPUT_FORMAT=mp3_44100_128
+ELEVENLABS_API_KEY=sk-...
+ELEVENLABS_BASE_URL=https://api.elevenlabs.io
+ELEVENLABS_VOICE_ID=<id-da-voz>
+ELEVENLABS_TTS_MODEL=eleven_flash_v2_5
+ELEVENLABS_TTS_TIMEOUT_SECONDS=30
+ELEVENLABS_TTS_MAX_RETRIES=2
+```
+
+A chave de API e os headers (`xi-api-key`) nunca são logados, e nenhum áudio de
+entrada é armazenado. Os testes automatizados nunca chamam a API real (usam
+`httpx.MockTransport`).
+
+### Como escolher `ELEVENLABS_VOICE_ID`
+
+O `voice_id` identifica a voz no ElevenLabs. Para obtê-lo:
+
+- No painel: **Voices** → selecione/adicione uma voz → copie o **Voice ID**.
+- Via API: `GET https://api.elevenlabs.io/v1/voices` com o header
+  `xi-api-key: <sua-chave>` e use o campo `voice_id` da voz desejada.
+
+Para PT-BR, prefira modelos multilíngues (ex.: `eleven_flash_v2_5`, que é o
+padrão e tem baixa latência). A requisição também aceita sobrescrever por
+interação via `metadata.voice_id` e `metadata.tts_output_format`.
+
+### Exemplo de requisição/resposta com áudio
+
+```bash
+curl -s http://localhost:8080/v1/interactions/text \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "session_id": "session_demo",
+    "client_type": "test",
+    "input_text": "Oi Cubinho, tudo bem?",
+    "generate_audio": true,
+    "metadata": {"device_id": "rpi-001", "locale": "pt-BR"}
+  }'
+```
+
+```json
+{
+  "interaction_id": "int_123",
+  "assistant_text": "Oi! Tudo ótimo por aqui!",
+  "audio": {
+    "audio_id": "aud_123",
+    "audio_url": "http://localhost:8080/v1/audio/aud_123",
+    "content_type": "audio/mpeg",
+    "duration_ms": null,
+    "provider": "elevenlabs",
+    "model": "eleven_flash_v2_5",
+    "created_at": "2026-06-07T12:00:00Z",
+    "expires_at": null
+  }
+}
+```
+
+O arquivo fica temporariamente em `TTS_STORAGE_PATH` e é servido por
+`GET /v1/audio/{audio_id}`. S3/CDN ficam fora desta fase. No Docker Compose
+local, `./data/audio` é montado em `/app/data/audio`.
 
 ## Prompts
 

@@ -1,9 +1,13 @@
-"""Fake speech adapters prepared for future ElevenLabs integration.
+"""ElevenLabs adapters.
 
-Not wired into the MVP slice; defined so the STT/TTS ports have working
-no-op implementations for future use cases and tests. No audio is stored.
+``FakeSpeechToTextProvider`` is a no-op kept for future STT work (no audio is
+stored). ``FakeTextToSpeechProvider`` and ``ElevenLabsTextToSpeechProvider``
+implement the TTS port and persist audio through the AudioStoragePort.
 """
 from __future__ import annotations
+
+from .elevenlabs_text_to_speech_provider import ElevenLabsTextToSpeechProvider
+from .fake_text_to_speech_provider import FakeTextToSpeechProvider
 
 
 class FakeSpeechToTextProvider:
@@ -11,9 +15,8 @@ class FakeSpeechToTextProvider:
         return ""
 
 
-class FakeTextToSpeechProvider:
-    async def synthesize(self, text: str) -> bytes:
-        return b""
-
-
-__all__ = ["FakeSpeechToTextProvider", "FakeTextToSpeechProvider"]
+__all__ = [
+    "ElevenLabsTextToSpeechProvider",
+    "FakeSpeechToTextProvider",
+    "FakeTextToSpeechProvider",
+]

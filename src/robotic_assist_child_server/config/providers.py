@@ -22,8 +22,13 @@ from ..application.use_cases import (
     ListMemories,
     RegisterUser,
 )
+from ..infrastructure.audio import LocalAudioStore
 from ..infrastructure.auth import Argon2Hasher, JwtService
 from ..infrastructure.database import create_engine, create_session_factory
+from ..infrastructure.elevenlabs import (
+    ElevenLabsTextToSpeechProvider,
+    FakeTextToSpeechProvider,
+)
 from ..infrastructure.images import LocalImageStore
 from ..infrastructure.openrouter import (
     FakeConversationProvider,
@@ -51,6 +56,8 @@ class Container:
     conversation_provider: FakeConversationProvider | OpenRouterConversationProvider
     image_store: LocalImageStore
     image_provider: FakeImageGenerationProvider | OpenRouterImageGenerationProvider
+    audio_store: LocalAudioStore
+    tts_provider: FakeTextToSpeechProvider | ElevenLabsTextToSpeechProvider
     interaction_repository: InMemoryInteractionRepository
     user_repository: SqlAlchemyUserRepository
     memory_repository: MemoryRepository
@@ -121,6 +128,26 @@ def _build_image_provider(
     return fake_provider
 
 
+def _build_tts_provider(
+    settings: Settings,
+    audio_store: LocalAudioStore,
+    fake_provider: FakeTextToSpeechProvider,
+) -> FakeTextToSpeechProvider | ElevenLabsTextToSpeechProvider:
+    provider_name = settings.tts_provider.strip().lower()
+    if provider_name == "elevenlabs":
+        return ElevenLabsTextToSpeechProvider(
+            api_key=settings.elevenlabs_api_key,
+            base_url=settings.elevenlabs_base_url,
+            voice_id=settings.elevenlabs_voice_id,
+            model=settings.elevenlabs_tts_model,
+            output_format=settings.tts_output_format,
+            timeout_seconds=settings.elevenlabs_tts_timeout_seconds,
+            max_retries=settings.elevenlabs_tts_max_retries,
+            audio_store=audio_store,
+        )
+    return fake_provider
+
+
 def build_container(settings: Settings) -> Container:
     prompt_loader = FilePromptLoader(settings.prompts_repository_path)
     prompt_composer = PromptComposer(prompt_loader)
@@ -136,6 +163,12 @@ def build_container(settings: Settings) -> Container:
     )
     fake_image_provider = FakeImageGenerationProvider(image_store=image_store)
     image_provider = _build_image_provider(settings, image_store, fake_image_provider)
+    audio_store = LocalAudioStore(
+        storage_path=settings.tts_storage_path,
+        public_base_url=settings.public_audio_base_url,
+    )
+    fake_tts_provider = FakeTextToSpeechProvider(audio_store=audio_store)
+    tts_provider = _build_tts_provider(settings, audio_store, fake_tts_provider)
     interaction_repository = InMemoryInteractionRepository()
 
     db_engine = create_engine(settings.resolved_database_url)
@@ -165,6 +198,10 @@ def build_container(settings: Settings) -> Container:
         image_default_aspect_ratio=settings.image_default_aspect_ratio,
         image_default_size=settings.image_default_size,
         image_output_format=settings.image_output_format,
+        tts_provider=tts_provider,
+        tts_enabled=settings.tts_enabled,
+        tts_default_output_format=settings.tts_output_format,
+        tts_voice_id=settings.elevenlabs_voice_id,
     )
     register_user = RegisterUser(
         user_repository=user_repository,
@@ -187,6 +224,8 @@ def build_container(settings: Settings) -> Container:
         conversation_provider=conversation_provider,
         image_store=image_store,
         image_provider=image_provider,
+        audio_store=audio_store,
+        tts_provider=tts_provider,
         interaction_repository=interaction_repository,
         user_repository=user_repository,
         memory_repository=memory_repository,

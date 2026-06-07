@@ -25,4 +25,8 @@ def new_image_id() -> str:
     return _new_id("img")
 
 
+def new_audio_id() -> str:
+    return _new_id("aud")
+
+
 DEV_USER_ID = "dev_user"

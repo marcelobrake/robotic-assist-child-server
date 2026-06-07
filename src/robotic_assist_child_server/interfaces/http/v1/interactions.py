@@ -4,11 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ....application.use_cases import TextInteractionInput
 from ....config.providers import Container
-from ....domain.entities import GeneratedImage
+from ....domain.entities import GeneratedAudio, GeneratedImage
 from ....shared.datetime import to_rfc3339
 from ....shared.errors import DomainError
 from .deps import get_container, resolve_interaction_user_id
 from .schemas import (
+    GeneratedAudioResponse,
     GeneratedImageResponse,
     TextInteractionRequest,
     TextInteractionResponse,
@@ -31,6 +32,21 @@ def _image_response(image: GeneratedImage | None) -> GeneratedImageResponse | No
     )
 
 
+def _audio_response(audio: GeneratedAudio | None) -> GeneratedAudioResponse | None:
+    if audio is None:
+        return None
+    return GeneratedAudioResponse(
+        audio_id=audio.audio_id,
+        audio_url=audio.audio_url,
+        content_type=audio.content_type,
+        duration_ms=audio.duration_ms,
+        provider=audio.provider,
+        model=audio.model,
+        created_at=to_rfc3339(audio.created_at),
+        expires_at=to_rfc3339(audio.expires_at) if audio.expires_at else None,
+    )
+
+
 @router.post("/text", response_model=TextInteractionResponse)
 async def create_text_interaction(
     payload: TextInteractionRequest,
@@ -45,6 +61,7 @@ async def create_text_interaction(
                 user_id=resolved_user_id or payload.user_id,
                 client_type=payload.client_type,
                 device_id=payload.device_id,
+                generate_audio=payload.generate_audio,
                 metadata=payload.metadata,
             )
         )
@@ -63,6 +80,7 @@ async def create_text_interaction(
         intent=interaction.intent,
         image_prompt=interaction.image_prompt,
         image=_image_response(interaction.image),
+        audio=_audio_response(interaction.audio),
         status=interaction.status,
         created_at=to_rfc3339(interaction.created_at),
         device_id=interaction.device_id,

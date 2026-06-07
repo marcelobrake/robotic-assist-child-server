@@ -13,6 +13,7 @@ FIXTURE_PROMPTS = Path(__file__).parent / "fixtures" / "prompts"
 
 def _base_settings(**overrides: object) -> Settings:
     image_storage_path = overrides.pop("image_storage_path", "/tmp/rac-test-images")
+    tts_storage_path = overrides.pop("tts_storage_path", "/tmp/rac-test-audio")
     values = {
         "prompts_repository_path": str(FIXTURE_PROMPTS),
         "deployment_environment": "test",
@@ -27,6 +28,10 @@ def _base_settings(**overrides: object) -> Settings:
         "image_generation_enabled": False,
         "image_storage_path": str(image_storage_path),
         "public_image_base_url": "http://testserver/v1/images",
+        "tts_provider": "fake",
+        "tts_enabled": False,
+        "tts_storage_path": str(tts_storage_path),
+        "public_audio_base_url": "http://testserver/v1/audio",
     }
     values.update(overrides)
     return Settings(**values)
@@ -34,7 +39,10 @@ def _base_settings(**overrides: object) -> Settings:
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return _base_settings(image_storage_path=tmp_path / "images")
+    return _base_settings(
+        image_storage_path=tmp_path / "images",
+        tts_storage_path=tmp_path / "audio",
+    )
 
 
 @pytest.fixture
@@ -47,7 +55,9 @@ def client(settings: Settings) -> TestClient:
 @pytest.fixture
 def dev_settings(tmp_path: Path) -> Settings:
     return _base_settings(
-        dev_auth_disabled=True, image_storage_path=tmp_path / "images"
+        dev_auth_disabled=True,
+        image_storage_path=tmp_path / "images",
+        tts_storage_path=tmp_path / "audio",
     )
 
 

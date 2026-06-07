@@ -34,6 +34,7 @@ from ..ports.image_generation import (
 )
 from ..ports.interaction_repository import InteractionRepository
 from ..ports.memory import MemoryRetriever, MemoryUpdater
+from ..ports.speech import SpeechSynthesisRequest, TextToSpeechProvider
 from ..services.prompt_composer import PromptComposer
 from ..services.safety_guard import SafetyGuard
 
@@ -58,6 +59,7 @@ class TextInteractionInput:
     user_id: str | None = None
     client_type: ClientType = ClientType.UNKNOWN
     device_id: str | None = None
+    generate_audio: bool = False
     metadata: dict[str, str] = field(default_factory=dict)
 
 
@@ -76,6 +78,10 @@ class HandleTextInteraction:
         image_default_aspect_ratio: str = "1:1",
         image_default_size: str = "800x800",
         image_output_format: str = "png",
+        tts_provider: TextToSpeechProvider | None = None,
+        tts_enabled: bool = False,
+        tts_default_output_format: str = "mp3_44100_128",
+        tts_voice_id: str | None = None,
     ) -> None:
         self._composer = composer
         self._provider = provider
@@ -88,6 +94,10 @@ class HandleTextInteraction:
         self._image_default_aspect_ratio = image_default_aspect_ratio
         self._image_default_size = image_default_size
         self._image_output_format = image_output_format
+        self._tts_provider = tts_provider
+        self._tts_enabled = tts_enabled
+        self._tts_default_output_format = tts_default_output_format
+        self._tts_voice_id = tts_voice_id
 
     async def execute(self, data: TextInteractionInput) -> TextInteraction:
         safe_input = self._safety.validate_input_text(data.text)
@@ -148,6 +158,12 @@ class HandleTextInteraction:
             session_id=session_id,
             user_id=user_id,
         )
+        audio = await self._maybe_generate_audio(
+            response_text=response_text,
+            data=data,
+            session_id=session_id,
+            user_id=user_id,
+        )
 
         interaction = TextInteraction(
             interaction_id=new_interaction_id(),
@@ -162,6 +178,7 @@ class HandleTextInteraction:
             intent=generated.intent,
             image_prompt=generated.image_prompt,
             image=image,
+            audio=audio,
             status="accepted",
         )
 
@@ -289,6 +306,53 @@ class HandleTextInteraction:
                     "image generation failed",
                     extra={
                         "event_name": "image.generate",
+                        "session_id": session_id,
+                        "user_id": user_id,
+                    },
+                )
+                return None
+
+    async def _maybe_generate_audio(
+        self,
+        *,
+        response_text: str,
+        data: TextInteractionInput,
+        session_id: str,
+        user_id: str,
+    ):
+        if (
+            not data.generate_audio
+            or not self._tts_enabled
+            or self._tts_provider is None
+            or not response_text.strip()
+        ):
+            return None
+
+        # Best-effort: a TTS error must never break the child's textual reply.
+        with _tracer.start_as_current_span("tts.generate") as span:
+            span.set_attribute("client_type", data.client_type.value)
+            span.set_attribute("tts.enabled", True)
+            try:
+                return await self._tts_provider.synthesize(
+                    SpeechSynthesisRequest(
+                        text=response_text,
+                        session_id=session_id,
+                        user_id=user_id,
+                        output_format=data.metadata.get(
+                            "tts_output_format", self._tts_default_output_format
+                        ),
+                        voice_id=data.metadata.get("voice_id", self._tts_voice_id),
+                        metadata={
+                            **data.metadata,
+                            "client_type": data.client_type.value,
+                        },
+                    )
+                )
+            except Exception:  # pragma: no cover - audio is best-effort
+                _logger.exception(
+                    "tts generation failed",
+                    extra={
+                        "event_name": "tts.generate",
                         "session_id": session_id,
                         "user_id": user_id,
                     },

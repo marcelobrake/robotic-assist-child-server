@@ -77,6 +77,21 @@ class Settings(BaseSettings):
     image_default_aspect_ratio: str = "1:1"
     image_default_size: str = "800x800"
 
+    # Text-to-speech (TTS). Disabled by default; fake provider keeps local
+    # development and tests independent from external APIs. No input audio is
+    # stored and the API key/headers are never logged.
+    tts_provider: str = "fake"
+    tts_enabled: bool = False
+    tts_output_format: str = "mp3_44100_128"
+    tts_storage_path: str = "/app/data/audio"
+    public_audio_base_url: str = "http://localhost:8080/v1/audio"
+    elevenlabs_api_key: str | None = None
+    elevenlabs_base_url: str = "https://api.elevenlabs.io"
+    elevenlabs_voice_id: str | None = None
+    elevenlabs_tts_model: str = "eleven_flash_v2_5"
+    elevenlabs_tts_timeout_seconds: float = 30.0
+    elevenlabs_tts_max_retries: int = 2
+
     # Prepared connection settings (unused by the MVP slice).
     redis_url: str | None = None
     otel_exporter_otlp_endpoint: str | None = None
