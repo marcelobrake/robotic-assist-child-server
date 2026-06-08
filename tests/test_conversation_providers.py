@@ -181,8 +181,8 @@ def test_parser_converts_plain_text_to_safe_fallback() -> None:
 
     assert parsed.is_contract_valid is False
     assert parsed.fallback_reason == "plain_text"
-    assert parsed.response.intent == "fallback"
-    assert "brincar" in parsed.response.text
+    assert parsed.response.intent == "chat"
+    assert parsed.response.text == "texto solto"
 
 
 async def test_openrouter_provider_uses_fake_fallback_on_error() -> None:

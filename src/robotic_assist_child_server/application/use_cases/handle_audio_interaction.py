@@ -26,6 +26,7 @@ from ...shared.ids import new_interaction_id, new_session_id, new_user_id
 from ...shared.logging import get_logger
 from ..ports.interaction_repository import InteractionRepository
 from ..ports.speech import (
+    SpeechProviderConfigurationError,
     SpeechToTextProvider,
     SpeechTranscriptionRequest,
 )
@@ -34,12 +35,43 @@ from .handle_text_interaction import HandleTextInteraction, TextInteractionInput
 
 _logger = get_logger(__name__)
 _tracer = trace.get_tracer(__name__)
+_CONTEXTUAL_FOLLOW_UPS = {
+    "sim",
+    "quero",
+    "pode",
+    "pode sim",
+    "claro",
+    "ok",
+    "ta",
+    "tá",
+    "aham",
+    "uhum",
+    "continua",
+    "continue",
+    "mais",
+    "outro",
+    "outra",
+    "outro exemplo",
+    "mais um",
+    "mais uma",
+}
+_ASSISTANT_FOLLOW_UP_MARKERS = (
+    "?",
+    "quer",
+    "quer que",
+    "posso",
+    "gostaria",
+    "mais um",
+    "outro exemplo",
+    "continuar",
+)
 
 
 @dataclass(frozen=True, slots=True)
 class AudioInteractionInput:
     audio: bytes
     content_type: str
+    filename: str = "audio"
     session_id: str | None = None
     user_id: str | None = None
     client_type: ClientType = ClientType.UNKNOWN
@@ -79,7 +111,7 @@ class HandleAudioInteraction:
             span.set_attribute("stt.empty", not text)
 
             if data.listener_mode:
-                ignored = self._evaluate_listener_mode(
+                ignored = await self._evaluate_listener_mode(
                     text=text,
                     data=data,
                     session_id=session_id,
@@ -111,6 +143,7 @@ class HandleAudioInteraction:
                     SpeechTranscriptionRequest(
                         audio=data.audio,
                         content_type=data.content_type,
+                        filename=data.filename,
                         session_id=session_id,
                         user_id=user_id,
                         language=data.language,
@@ -120,6 +153,22 @@ class HandleAudioInteraction:
                         },
                     )
                 )
+            except SpeechProviderConfigurationError as exc:
+                _logger.warning(
+                    "speech transcription provider configuration failed",
+                    extra={
+                        "event_name": "stt.transcribe",
+                        "session_id": session_id,
+                        "user_id": user_id,
+                        "attributes": {
+                            "client_type": data.client_type.value,
+                            "error_type": exc.__class__.__name__,
+                        },
+                    },
+                )
+                raise SpeechTranscriptionError(
+                    "STT não autorizado. Verifique a chave OpenAI no backend."
+                ) from exc
             except Exception as exc:
                 _logger.warning(
                     "speech transcription failed",
@@ -139,7 +188,7 @@ class HandleAudioInteraction:
             span.set_attribute("stt.provider", result.provider)
             return result.text
 
-    def _evaluate_listener_mode(
+    async def _evaluate_listener_mode(
         self,
         *,
         text: str,
@@ -149,9 +198,11 @@ class HandleAudioInteraction:
     ) -> TextInteraction | None:
         with _tracer.start_as_current_span("speech_intent.classify") as span:
             decision = self._intent_classifier.classify(text)
+            context_follow_up = await self._is_contextual_follow_up(text, session_id)
             span.set_attribute("speech_intent.should_respond", decision.should_respond)
             span.set_attribute("speech_intent.reason", decision.reason)
-        if decision.should_respond:
+            span.set_attribute("speech_intent.context_follow_up", context_follow_up)
+        if decision.should_respond or context_follow_up:
             return None
 
         with _tracer.start_as_current_span("interaction.audio.ignored") as span:
@@ -183,6 +234,28 @@ class HandleAudioInteraction:
             status="ignored",
             ignored_reason=decision.reason,
         )
+
+    async def _is_contextual_follow_up(self, text: str, session_id: str) -> bool:
+        normalized = " ".join((text or "").strip().lower().split())
+        if normalized not in _CONTEXTUAL_FOLLOW_UPS or self._interactions is None:
+            return False
+        try:
+            history = await self._interactions.list_recent_by_session(
+                session_id, limit=4
+            )
+        except Exception:  # pragma: no cover - best-effort, never break capture
+            _logger.exception(
+                "session history retrieval failed for listener mode",
+                extra={"event_name": "speech_intent.history", "session_id": session_id},
+            )
+            return False
+
+        for interaction in reversed(history):
+            if interaction.status != "accepted" or not interaction.response_text.strip():
+                continue
+            response_text = interaction.response_text.strip().lower()
+            return any(marker in response_text for marker in _ASSISTANT_FOLLOW_UP_MARKERS)
+        return False
 
     async def _maybe_persist_ignored(self, interaction: TextInteraction) -> None:
         if not self._store_ignored or self._interactions is None:

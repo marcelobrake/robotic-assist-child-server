@@ -10,6 +10,9 @@ prompts:
   - id: "system.response_contract"
     path: "system/response_contract.md"
     required: true
+  - id: "interaction.image_generation"
+    path: "interaction/image_generation.md"
+    required: true
   - id: "interaction.conversation"
     path: "interaction/conversation.md"
     required: true

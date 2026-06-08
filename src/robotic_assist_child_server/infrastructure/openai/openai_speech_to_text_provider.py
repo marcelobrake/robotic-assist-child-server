@@ -9,12 +9,14 @@ On failure it raises; the caller decides how to surface the error.
 """
 from __future__ import annotations
 
+import re
 import time
 
 import httpx
 from opentelemetry import trace
 
 from ...application.ports.speech import (
+    SpeechProviderConfigurationError,
     SpeechTranscription,
     SpeechTranscriptionRequest,
 )
@@ -26,6 +28,18 @@ from ...infrastructure.telemetry.metrics import (
 from ...shared.logging import get_logger
 
 _TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
+_CONTENT_TYPE_EXTENSIONS = {
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/webm": "webm",
+    "audio/aac": "aac",
+    "audio/ogg": "ogg",
+    "audio/m4a": "m4a",
+    "audio/x-m4a": "m4a",
+}
+_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -62,12 +76,17 @@ class OpenAISpeechToTextProvider:
 
             if not self._api_key:
                 record_stt_error(provider_name, error_type="missing_api_key")
-                raise RuntimeError("OpenAI API key is not configured")
+                raise SpeechProviderConfigurationError(
+                    "OpenAI API key is not configured"
+                )
 
             client = self._client or httpx.AsyncClient(timeout=self._timeout_seconds)
             try:
                 try:
                     text = await self._request_with_retries(client, request)
+                except SpeechProviderConfigurationError:
+                    record_stt_error(provider_name, error_type="auth_failed")
+                    raise
                 except Exception as exc:
                     record_stt_error(
                         provider_name, error_type=self._safe_error_reason(exc)
@@ -115,6 +134,10 @@ class OpenAISpeechToTextProvider:
             except httpx.HTTPStatusError as exc:
                 last_error = exc
                 status_code = exc.response.status_code
+                if status_code in {401, 403}:
+                    raise SpeechProviderConfigurationError(
+                        f"OpenAI STT authentication failed with status {status_code}"
+                    ) from exc
                 if status_code in _TRANSIENT_STATUS_CODES and attempt < max_attempts:
                     self._log_transient_error(attempt, status_code)
                     continue
@@ -138,7 +161,7 @@ class OpenAISpeechToTextProvider:
             data["language"] = request.language
         files = {
             "file": (
-                "audio",
+                _safe_audio_filename(request.filename, request.content_type),
                 request.audio,
                 request.content_type or "application/octet-stream",
             )
@@ -172,3 +195,15 @@ class OpenAISpeechToTextProvider:
                 "attributes": {"attempt": attempt, "status_code": status_code},
             },
         )
+
+
+def _safe_audio_filename(filename: str, content_type: str) -> str:
+    name = (filename or "audio").rsplit("/", 1)[-1].rsplit("\\", 1)[-1].strip()
+    name = _SAFE_FILENAME_RE.sub("_", name) or "audio"
+    if "." not in name:
+        extension = _CONTENT_TYPE_EXTENSIONS.get(
+            (content_type or "").split(";", 1)[0].strip().lower()
+        )
+        if extension:
+            name = f"{name}.{extension}"
+    return name

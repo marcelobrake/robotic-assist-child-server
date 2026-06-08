@@ -8,11 +8,15 @@ from fastapi.testclient import TestClient
 
 from robotic_assist_child_server.app import create_app
 from robotic_assist_child_server.application.ports.speech import (
+    SpeechProviderConfigurationError,
     SpeechTranscriptionRequest,
 )
+from robotic_assist_child_server.domain.entities import TextInteraction
+from robotic_assist_child_server.domain.enums import ClientType
 from robotic_assist_child_server.application.services.speech_intent_classifier import (
     RuleBasedSpeechIntentClassifier,
 )
+from robotic_assist_child_server.shared.datetime import utc_now
 from robotic_assist_child_server.infrastructure.elevenlabs import (
     ElevenLabsSpeechToTextProvider,
     FakeSpeechToTextProvider,
@@ -30,6 +34,7 @@ def _transcription_request(audio: bytes) -> SpeechTranscriptionRequest:
     return SpeechTranscriptionRequest(
         audio=audio,
         content_type="audio/wav",
+        filename="speech.wav",
         session_id="session_1",
         user_id="usr_1",
     )
@@ -47,6 +52,13 @@ async def test_fake_stt_decodes_uploaded_bytes() -> None:
     assert result.provider == "fake"
 
 
+async def test_fake_stt_rejects_binary_audio_payload() -> None:
+    provider = FakeSpeechToTextProvider()
+
+    with pytest.raises(RuntimeError, match="Fake STT cannot transcribe binary audio"):
+        await provider.transcribe(_transcription_request(b"\x00\x00\x00 ftypM4A audio"))
+
+
 async def test_elevenlabs_stt_builds_expected_request() -> None:
     captured: dict[str, object] = {}
 
@@ -56,6 +68,7 @@ async def test_elevenlabs_stt_builds_expected_request() -> None:
         captured["xi_api_key"] = request.headers.get("xi-api-key")
         captured["authorization"] = request.headers.get("Authorization")
         captured["content_type"] = request.headers.get("content-type")
+        captured["body"] = await request.aread()
         return httpx.Response(200, json={"text": "uma história sobre dinossauros"})
 
     provider = ElevenLabsSpeechToTextProvider(
@@ -77,6 +90,7 @@ async def test_elevenlabs_stt_builds_expected_request() -> None:
     # Never leaks a bearer token; ElevenLabs authenticates via xi-api-key only.
     assert captured["authorization"] is None
     assert "multipart/form-data" in str(captured["content_type"])
+    assert b'filename="speech.wav"' in captured["body"]
 
 
 async def test_openai_stt_builds_expected_request() -> None:
@@ -85,6 +99,7 @@ async def test_openai_stt_builds_expected_request() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
         captured["authorization"] = request.headers.get("Authorization")
+        captured["body"] = await request.aread()
         return httpx.Response(200, json={"text": "olá mundo"})
 
     provider = OpenAISpeechToTextProvider(
@@ -102,6 +117,24 @@ async def test_openai_stt_builds_expected_request() -> None:
     assert result.provider == "openai"
     assert captured["url"] == "https://openai.test/v1/audio/transcriptions"
     assert captured["authorization"] == "Bearer sk-test"
+    assert b'filename="speech.wav"' in captured["body"]
+
+
+async def test_openai_stt_raises_configuration_error_on_unauthorized() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": "invalid api key"})
+
+    provider = OpenAISpeechToTextProvider(
+        api_key="sk-invalid",
+        base_url="https://openai.test/v1",
+        model="gpt-4o-mini-transcribe",
+        timeout_seconds=30,
+        max_retries=0,
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(SpeechProviderConfigurationError):
+        await provider.transcribe(_transcription_request(b"audio-bytes"))
 
 
 async def test_elevenlabs_stt_raises_on_error() -> None:
@@ -268,6 +301,50 @@ def test_audio_interaction_stt_failure_returns_friendly_error(settings) -> None:
     )
 
 
+def test_audio_interaction_openai_auth_failure_returns_actionable_error(settings) -> None:
+    settings.stt_enabled = True
+    settings.stt_provider = "openai"
+    settings.openai_api_key = None
+    app = create_app(settings)
+
+    with TestClient(app) as test_client:
+        response = test_client.post(
+            "/v1/interactions/audio",
+            files=_audio_files("audio bytes"),
+            data={"client_type": "test", "generate_audio": "true"},
+        )
+
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == (
+        "STT não autorizado. Verifique a chave OpenAI no backend."
+    )
+
+
+def test_audio_interaction_fake_stt_binary_payload_returns_friendly_error(
+    settings,
+) -> None:
+    settings.stt_enabled = False
+    app = create_app(settings)
+
+    with TestClient(app) as test_client:
+        response = test_client.post(
+            "/v1/interactions/audio",
+            files={
+                "audio_file": (
+                    "speech.m4a",
+                    b"\x00\x00\x00 ftypM4A audio bytes",
+                    "audio/m4a",
+                )
+            },
+            data={"client_type": "test", "generate_audio": "true"},
+        )
+
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == (
+        "Não consegui entender o áudio agora. Tente novamente."
+    )
+
+
 async def test_ignored_interaction_not_persisted_by_default(settings) -> None:
     settings.store_ignored_interactions = False
     app = create_app(settings)
@@ -284,6 +361,39 @@ async def test_ignored_interaction_not_persisted_by_default(settings) -> None:
     assert body["status"] == "ignored"
     stored = await container.interaction_repository.get(body["interaction_id"])
     assert stored is None
+
+
+async def test_listener_mode_accepts_short_contextual_follow_up(settings) -> None:
+    app = create_app(settings)
+
+    with TestClient(app) as test_client:
+        container = test_client.app.state.container
+        await container.interaction_repository.save(
+            TextInteraction(
+                interaction_id="int_previous_followup",
+                session_id="session_followup",
+                user_id="usr_1",
+                client_type=ClientType.TEST,
+                input_text="Explique frações.",
+                response_text="Quer que eu dê outro exemplo?",
+                created_at=utc_now(),
+                status="accepted",
+            )
+        )
+        response = test_client.post(
+            "/v1/interactions/audio",
+            files=_audio_files("sim"),
+            data={
+                "client_type": "test",
+                "listener_mode": "true",
+                "session_id": "session_followup",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "accepted"
+    assert body["input_text"] == "sim"
 
 
 async def test_ignored_interaction_persisted_when_enabled(settings) -> None:

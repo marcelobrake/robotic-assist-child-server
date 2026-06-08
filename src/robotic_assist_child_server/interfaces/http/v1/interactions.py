@@ -180,6 +180,7 @@ async def create_audio_interaction(
             AudioInteractionInput(
                 audio=audio_bytes,
                 content_type=content_type,
+                filename=audio_file.filename or "audio",
                 session_id=session_id,
                 user_id=resolved_user_id or user_id,
                 client_type=client_type,

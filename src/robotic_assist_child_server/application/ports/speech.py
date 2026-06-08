@@ -23,6 +23,7 @@ class SpeechTranscriptionRequest:
     content_type: str
     session_id: str
     user_id: str
+    filename: str = "audio"
     language: str | None = None
     metadata: dict[str, str] = field(default_factory=dict)
 
@@ -33,6 +34,14 @@ class SpeechTranscription:
     provider: str
     model: str
     language: str | None = None
+
+
+class SpeechProviderError(RuntimeError):
+    """Base exception for speech provider failures."""
+
+
+class SpeechProviderConfigurationError(SpeechProviderError):
+    """Raised when STT/TTS provider credentials or configuration are invalid."""
 
 
 @runtime_checkable

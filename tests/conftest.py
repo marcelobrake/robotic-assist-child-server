@@ -32,6 +32,8 @@ def _base_settings(**overrides: object) -> Settings:
         "tts_enabled": False,
         "tts_storage_path": str(tts_storage_path),
         "public_audio_base_url": "http://testserver/v1/audio",
+        "stt_provider": "fake",
+        "stt_enabled": False,
     }
     values.update(overrides)
     return Settings(**values)

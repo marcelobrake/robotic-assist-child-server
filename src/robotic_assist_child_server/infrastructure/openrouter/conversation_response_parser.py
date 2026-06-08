@@ -43,7 +43,7 @@ class ConversationResponseParser:
             candidate = self._extract_json_candidate(raw_content)
             if candidate is None:
                 span.set_attribute("conversation.response.parse.outcome", "plain_text")
-                return self._fallback("plain_text")
+                return self._plain_text(raw_content)
 
             try:
                 payload = json.loads(candidate)
@@ -105,6 +105,19 @@ class ConversationResponseParser:
                 image_prompt=image_prompt,
             ),
             is_contract_valid=True,
+        )
+
+    @staticmethod
+    def _plain_text(raw_content: str) -> ParsedConversationResponse:
+        return ParsedConversationResponse(
+            response=ConversationResponse(
+                text=(raw_content or "").strip(),
+                expression="happy",
+                intent="chat",
+                image_prompt=None,
+            ),
+            is_contract_valid=False,
+            fallback_reason="plain_text",
         )
 
     @staticmethod

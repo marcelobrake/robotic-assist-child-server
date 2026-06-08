@@ -20,6 +20,7 @@ _SYSTEM_PROMPT_ORDER = (
     "system.child_robot_base",
     "system.safety_rules",
     "system.response_contract",
+    "interaction.image_generation",
     "interaction.conversation",
 )
 

@@ -8,6 +8,7 @@ On failure it raises; the caller decides how to surface the error.
 """
 from __future__ import annotations
 
+import re
 import time
 
 import httpx
@@ -25,6 +26,18 @@ from ...infrastructure.telemetry.metrics import (
 from ...shared.logging import get_logger
 
 _TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
+_CONTENT_TYPE_EXTENSIONS = {
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/webm": "webm",
+    "audio/aac": "aac",
+    "audio/ogg": "ogg",
+    "audio/m4a": "m4a",
+    "audio/x-m4a": "m4a",
+}
+_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -134,7 +147,7 @@ class ElevenLabsSpeechToTextProvider:
             data["language_code"] = request.language
         files = {
             "file": (
-                "audio",
+                _safe_audio_filename(request.filename, request.content_type),
                 request.audio,
                 request.content_type or "application/octet-stream",
             )
@@ -168,3 +181,15 @@ class ElevenLabsSpeechToTextProvider:
                 "attributes": {"attempt": attempt, "status_code": status_code},
             },
         )
+
+
+def _safe_audio_filename(filename: str, content_type: str) -> str:
+    name = (filename or "audio").rsplit("/", 1)[-1].rsplit("\\", 1)[-1].strip()
+    name = _SAFE_FILENAME_RE.sub("_", name) or "audio"
+    if "." not in name:
+        extension = _CONTENT_TYPE_EXTENSIONS.get(
+            (content_type or "").split(";", 1)[0].strip().lower()
+        )
+        if extension:
+            name = f"{name}.{extension}"
+    return name
