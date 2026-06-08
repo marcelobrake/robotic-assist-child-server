@@ -19,6 +19,11 @@ class PromptsNotLoadedError(DomainError):
     http_status = 503
 
 
+class SpeechTranscriptionError(DomainError):
+    code = "speech_transcription_failed"
+    http_status = 503
+
+
 class UnsafeContentError(DomainError):
     code = "unsafe_content"
     http_status = 422

@@ -25,9 +25,12 @@ from .speech import (
     AudioStoragePort,
     SpeechSynthesisRequest,
     SpeechToTextProvider,
+    SpeechTranscription,
+    SpeechTranscriptionRequest,
     StoredAudio,
     TextToSpeechProvider,
 )
+from .speech_intent import SpeechIntentClassifier, SpeechIntentResult
 from .user_repository import UserRepository
 
 __all__ = [
@@ -47,8 +50,12 @@ __all__ = [
     "PasswordHasherPort",
     "PromptRepository",
     "SafetyGuardPort",
+    "SpeechIntentClassifier",
+    "SpeechIntentResult",
     "SpeechSynthesisRequest",
     "SpeechToTextProvider",
+    "SpeechTranscription",
+    "SpeechTranscriptionRequest",
     "StoredAudio",
     "StoredImage",
     "TextToSpeechProvider",

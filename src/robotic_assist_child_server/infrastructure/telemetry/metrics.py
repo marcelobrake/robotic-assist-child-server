@@ -20,6 +20,10 @@ try:  # pragma: no cover - depends on optional OTel runtime wiring
     _tts_error_count = _meter.create_counter("tts.error.count")
     _tts_duration_ms = _meter.create_histogram("tts.duration_ms")
     _audio_serve_count = _meter.create_counter("audio.serve.count")
+    _stt_request_count = _meter.create_counter("stt.request.count")
+    _stt_error_count = _meter.create_counter("stt.error.count")
+    _stt_duration_ms = _meter.create_histogram("stt.duration_ms")
+    _audio_ignored_count = _meter.create_counter("interaction.audio.ignored.count")
 except Exception:  # pragma: no cover - no-op if OTel is unavailable
     _request_count = None
     _error_count = None
@@ -34,6 +38,10 @@ except Exception:  # pragma: no cover - no-op if OTel is unavailable
     _tts_error_count = None
     _tts_duration_ms = None
     _audio_serve_count = None
+    _stt_request_count = None
+    _stt_error_count = None
+    _stt_duration_ms = None
+    _audio_ignored_count = None
 
 
 def _attrs(provider: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -106,3 +114,23 @@ def record_tts_duration(provider: str, duration_ms: float) -> None:
 def record_audio_serve(*, found: bool) -> None:
     if _audio_serve_count is not None:
         _audio_serve_count.add(1, {"found": found})
+
+
+def record_stt_request(provider: str) -> None:
+    if _stt_request_count is not None:
+        _stt_request_count.add(1, _attrs(provider))
+
+
+def record_stt_error(provider: str, *, error_type: str) -> None:
+    if _stt_error_count is not None:
+        _stt_error_count.add(1, _attrs(provider, {"error_type": error_type}))
+
+
+def record_stt_duration(provider: str, duration_ms: float) -> None:
+    if _stt_duration_ms is not None:
+        _stt_duration_ms.record(duration_ms, _attrs(provider))
+
+
+def record_audio_ignored(reason: str) -> None:
+    if _audio_ignored_count is not None:
+        _audio_ignored_count.add(1, {"reason": reason})

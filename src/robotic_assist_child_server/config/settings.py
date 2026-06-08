@@ -92,6 +92,30 @@ class Settings(BaseSettings):
     elevenlabs_tts_timeout_seconds: float = 30.0
     elevenlabs_tts_max_retries: int = 2
 
+    # Speech-to-text (STT). Disabled by default; fake provider decodes uploaded
+    # bytes as text so local development and tests need no external API. Input
+    # audio is never stored and API keys are never logged.
+    stt_provider: str = "elevenlabs"
+    stt_enabled: bool = False
+    elevenlabs_stt_model: str = "scribe_v2"
+    elevenlabs_stt_realtime_model: str = "scribe_v2_realtime"
+    elevenlabs_stt_timeout_seconds: float = 30.0
+    openai_api_key: str | None = None
+    openai_stt_base_url: str = "https://api.openai.com/v1"
+    openai_stt_model: str = "gpt-4o-mini-transcribe"
+    openai_stt_timeout_seconds: float = 30.0
+
+    # Audio upload / interaction policy.
+    max_audio_upload_mb: int = 10
+    audio_input_retention: str = "none"
+    store_ignored_interactions: bool = False
+
+    # Listener (continuous-listening) mode.
+    listener_mode_require_addressing: bool = True
+    listener_mode_allowed_triggers: str = (
+        "Cubinho,oi,olá,ei,conta,desenha,explica,me ajuda,brinca"
+    )
+
     # Prepared connection settings (unused by the MVP slice).
     redis_url: str | None = None
     otel_exporter_otlp_endpoint: str | None = None
@@ -103,6 +127,18 @@ class Settings(BaseSettings):
             or self.postgres_dsn
             or "sqlite+aiosqlite:///./rac_dev.db"
         )
+
+    @property
+    def max_audio_upload_bytes(self) -> int:
+        return max(1, self.max_audio_upload_mb) * 1024 * 1024
+
+    @property
+    def listener_mode_triggers(self) -> list[str]:
+        return [
+            trigger.strip()
+            for trigger in self.listener_mode_allowed_triggers.split(",")
+            if trigger.strip()
+        ]
 
 
 @lru_cache

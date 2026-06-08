@@ -26,3 +26,4 @@ class TextInteraction:
     image: GeneratedImage | None = None
     audio: GeneratedAudio | None = None
     status: str = "accepted"
+    ignored_reason: str | None = None

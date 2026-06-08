@@ -24,7 +24,7 @@ ENV PYTHONPATH=/app/src \
 
 # Non-root user.
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /app/prompts /app/data/images \
+    && mkdir -p /app/prompts /app/data/images /app/data/audio \
     && chown -R appuser:appuser /app
 USER appuser
 

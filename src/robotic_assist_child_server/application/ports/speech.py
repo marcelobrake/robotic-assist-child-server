@@ -1,8 +1,12 @@
-"""Speech ports for ElevenLabs (STT/TTS).
+"""Speech ports for ElevenLabs/OpenAI (STT/TTS).
 
-STT remains a simple no-op contract (future work). TTS mirrors the image
-generation port: a provider synthesizes audio and persists it through an
+STT transcribes uploaded audio bytes into text through a pluggable provider
+(ElevenLabs by default, OpenAI optional). TTS mirrors the image generation
+port: a provider synthesizes audio and persists it through an
 ``AudioStoragePort`` so it can be served by ``GET /v1/audio/{audio_id}``.
+
+Input audio is never stored: providers receive the bytes in-memory and the
+endpoint discards them after transcription.
 """
 from __future__ import annotations
 
@@ -13,9 +17,29 @@ from typing import Protocol, runtime_checkable
 from ...domain.entities import GeneratedAudio
 
 
+@dataclass(frozen=True, slots=True)
+class SpeechTranscriptionRequest:
+    audio: bytes
+    content_type: str
+    session_id: str
+    user_id: str
+    language: str | None = None
+    metadata: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class SpeechTranscription:
+    text: str
+    provider: str
+    model: str
+    language: str | None = None
+
+
 @runtime_checkable
 class SpeechToTextProvider(Protocol):
-    async def transcribe(self, audio: bytes) -> str: ...
+    async def transcribe(
+        self, request: SpeechTranscriptionRequest
+    ) -> SpeechTranscription: ...
 
 
 @dataclass(frozen=True, slots=True)

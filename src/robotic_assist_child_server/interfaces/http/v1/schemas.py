@@ -144,12 +144,13 @@ class TextInteractionResponse(BaseModel):
     client_type: ClientType
     input_text: str
     response_text: str
-    assistant_text: str
+    assistant_text: str | None = None
     expression: str
     intent: str
     image_prompt: str | None = None
     image: GeneratedImageResponse | None = None
     audio: GeneratedAudioResponse | None = None
     status: str
+    ignored_reason: str | None = None
     created_at: str
     device_id: str | None = None

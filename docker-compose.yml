@@ -2,6 +2,7 @@ name: robotic-assist-child
 
 services:
   server:
+    image: robotic-assist-child-server
     build:
       context: .
       dockerfile: Dockerfile
@@ -72,7 +73,21 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+      storage-init:
+        condition: service_completed_successfully
     restart: unless-stopped
+
+  storage-init:
+    image: robotic-assist-child-server
+    user: "0:0"
+    entrypoint: ["/bin/sh"]
+    command:
+      - "-c"
+      - "mkdir -p /app/data/images /app/data/audio && chmod -R 0777 /app/data/images /app/data/audio"
+    volumes:
+      - ./data/images:/app/data/images
+      - ./data/audio:/app/data/audio
+    restart: "no"
 
   api-gateway:
     image: nginx:1.27-alpine

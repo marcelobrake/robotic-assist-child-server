@@ -38,6 +38,7 @@ fallback seguro para o provider fake. ElevenLabs permanece fora deste slice.
 - `GET  /v1/prompts/{prompt_id}`
 - `POST /v1/prompts/reload`
 - `POST /v1/interactions/text`
+- `POST /v1/interactions/audio`
 - `GET  /v1/images/{image_id}`
 - `GET  /v1/audio/{audio_id}`
 - `GET  /v1/memories`
@@ -371,7 +372,102 @@ curl -s http://localhost:8080/v1/interactions/text \
 
 O arquivo fica temporariamente em `TTS_STORAGE_PATH` e é servido por
 `GET /v1/audio/{audio_id}`. S3/CDN ficam fora desta fase. No Docker Compose
-local, `./data/audio` é montado em `/app/data/audio`.
+local, `./data/audio` é montado em `/app/data/audio`; o serviço
+`storage-init` prepara as permissões desses diretórios locais antes do servidor
+subir.
+
+## Voz (STT): entrada por áudio
+
+`POST /v1/interactions/audio` aceita um upload de áudio (`multipart/form-data`),
+transcreve a fala e injeta o texto no **mesmo fluxo** de
+`/v1/interactions/text` (memória → `PromptComposer` → `SafetyGuard` →
+provider de conversa → TTS opcional → persistência assíncrona). A resposta tem
+o mesmo formato de `/v1/interactions/text`.
+
+Provider de STT é plugável e selecionado por `STT_PROVIDER`. Quando
+`STT_ENABLED=false` (padrão) o provider **fake** é usado, então o endpoint e os
+testes funcionam sem chaves nem chamadas externas. O fake decodifica os bytes
+enviados como UTF-8 (o corpo do arquivo vira a transcrição), útil para
+desenvolvimento e testes determinísticos.
+
+```env
+# Padrão: ElevenLabs (Scribe). Use STT_PROVIDER=openai para o modelo batch
+# mais barato da OpenAI (gpt-4o-mini-transcribe).
+STT_PROVIDER=elevenlabs
+STT_ENABLED=false
+
+# ElevenLabs STT
+ELEVENLABS_API_KEY=sk-...
+ELEVENLABS_BASE_URL=https://api.elevenlabs.io
+ELEVENLABS_STT_MODEL=scribe_v2
+ELEVENLABS_STT_TIMEOUT_SECONDS=30
+
+# OpenAI STT (opcional, só quando STT_PROVIDER=openai)
+OPENAI_API_KEY=sk-...
+OPENAI_STT_BASE_URL=https://api.openai.com/v1
+OPENAI_STT_MODEL=gpt-4o-mini-transcribe
+OPENAI_STT_TIMEOUT_SECONDS=30
+
+# Upload e modo escuta
+MAX_AUDIO_UPLOAD_MB=10
+STORE_IGNORED_INTERACTIONS=false
+LISTENER_MODE_REQUIRE_ADDRESSING=true
+LISTENER_MODE_ALLOWED_TRIGGERS=Cubinho,oi,olá,ei,conta,desenha,explica,me ajuda,brinca
+```
+
+Tipos de conteúdo aceitos: `audio/mpeg`, `audio/mp4`, `audio/wav`,
+`audio/x-wav`, `audio/webm`, `audio/aac`, `audio/ogg`, `audio/m4a`. Conteúdo
+inválido → `415`; arquivo vazio → `400`; acima de `MAX_AUDIO_UPLOAD_MB` → `413`.
+
+### Campos do formulário
+
+- `audio_file` (obrigatório): o arquivo de áudio.
+- `session_id`, `user_id`, `client_type`, `device_id`: contexto da interação.
+- `generate_audio` (`true`/`false`): sintetiza a resposta em áudio (reusa o TTS).
+- `listener_mode` (`true`/`false`): ver abaixo.
+- `language`: dica opcional de idioma para o STT.
+- `metadata`: string JSON opcional (objeto) com metadados extras.
+
+### Modo escuta (`listener_mode`)
+
+Com `listener_mode=true`, um `SpeechIntentClassifier` baseado em regras avalia a
+transcrição **antes** de responder, evitando reações a ruído ou conversa não
+dirigida ao robô. Responde quando o texto contém "Cubinho", uma pergunta, um
+comando (`conta`, `desenha`, `explica`, `me ajuda`, `brinca`) ou uma saudação
+com contexto suficiente. Caso contrário a interação é **ignorada**:
+
+```json
+{
+  "status": "ignored",
+  "intent": "ignored",
+  "expression": "idle",
+  "assistant_text": null,
+  "audio": null,
+  "ignored_reason": "no_speech"
+}
+```
+
+Razões possíveis: `no_speech`, `background_noise`, `too_short`,
+`not_addressed_to_robot`, `valid_interaction`. Interações ignoradas só são
+persistidas quando `STORE_IGNORED_INTERACTIONS=true` (padrão `false`).
+
+### Exemplo (curl multipart)
+
+```bash
+curl -X POST http://localhost:8080/v1/interactions/audio \
+  -F "audio_file=@fala.wav;type=audio/wav" \
+  -F "client_type=mobile" \
+  -F "session_id=session_1" \
+  -F "listener_mode=true" \
+  -F "generate_audio=true"
+```
+
+### Privacidade
+
+O áudio de entrada **nunca é armazenado** (`AUDIO_INPUT_RETENTION=none`): os
+bytes são transcritos em memória e descartados. Chaves de API e headers de
+autenticação **nunca são logados**. Apenas o texto transcrito é persistido como
+`input_text` da interação.
 
 ## Prompts
 
@@ -406,6 +502,66 @@ curl http://localhost:8080/gateway/health
 Os clientes devem usar o gateway (`http://localhost:8080`). O servidor também
 expõe `http://localhost:8000` para desenvolvimento.
 
+## Roteiro E2E de voz com mobile
+
+Para validar o fluxo básico sem serviços externos, use conversa fake, STT fake
+e TTS fake. O fake de STT decodifica os bytes enviados como texto, então o smoke
+test abaixo valida gateway multipart, endpoint de áudio e download do áudio
+gerado sem chamar ElevenLabs/OpenAI.
+
+```bash
+cd robotic-assist-child-server
+TTS_ENABLED=true TTS_PROVIDER=fake STT_ENABLED=false docker compose up --build
+```
+
+Em outro terminal:
+
+```bash
+curl http://localhost:8080/v1/health/live
+curl http://localhost:8080/v1/health/ready
+
+printf 'Oi Cubinho' >/tmp/cubinho-fala.txt
+curl -s -X POST http://localhost:8080/v1/interactions/audio \
+  -F "audio_file=@/tmp/cubinho-fala.txt;type=audio/wav" \
+  -F "client_type=mobile" \
+  -F "session_id=session_e2e" \
+  -F "listener_mode=false" \
+  -F "generate_audio=true"
+```
+
+Confirme que a resposta tem `status=accepted`, `assistant_text` preenchido e
+`audio.audio_url`. Baixe a URL retornada:
+
+```bash
+curl -I http://localhost:8080/v1/audio/<audio_id>
+```
+
+Depois, no mobile:
+
+```bash
+cd robotic-assist-child-mobile
+npm install
+npx expo start
+```
+
+Use:
+
+```env
+EXPO_PUBLIC_API_BASE_URL=http://localhost:8080
+EXPO_PUBLIC_WS_BASE_URL=ws://localhost:8080
+```
+
+Teste manual:
+
+1. Abrir o app.
+2. Deixar `Modo ouvinte` desligado.
+3. Apertar `Falar`, dizer "Oi Cubinho" e aguardar 1 segundo de silêncio.
+4. Confirmar texto, áudio tocando e boca animando.
+5. Ligar `Modo ouvinte`.
+6. Dizer "Cubinho, me conta uma história curta".
+7. Confirmar resposta com áudio e retomada da escuta apenas após o playback.
+8. Ficar em silêncio e confirmar que `status=ignored` não aparece como erro nem gera loop de resposta.
+
 ## Rodar localmente (sem Docker)
 
 ```bash
@@ -426,4 +582,6 @@ pytest
 ```
 
 Os testes usam fixtures de prompts em `tests/fixtures/prompts`, mock HTTP para
-OpenRouter e não dependem de OpenRouter ou ElevenLabs reais.
+OpenRouter/ElevenLabs/OpenAI (via `httpx.MockTransport`) e não dependem de
+serviços externos reais. O STT é exercitado com o provider fake e os adapters
+ElevenLabs/OpenAI são testados apenas contra transporte mockado.
