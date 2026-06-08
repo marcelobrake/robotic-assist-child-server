@@ -157,6 +157,7 @@ def _build_tts_provider(
             output_format=settings.tts_output_format,
             timeout_seconds=settings.elevenlabs_tts_timeout_seconds,
             max_retries=settings.elevenlabs_tts_max_retries,
+            speed=settings.elevenlabs_tts_speed,
             audio_store=audio_store,
         )
     return fake_provider

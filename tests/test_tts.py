@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
@@ -35,7 +36,7 @@ def _request() -> SpeechSynthesisRequest:
 
 
 def _elevenlabs_provider(
-    tmp_path: Path, transport: httpx.MockTransport
+    tmp_path: Path, transport: httpx.MockTransport, speed: float = 1.0
 ) -> ElevenLabsTextToSpeechProvider:
     return ElevenLabsTextToSpeechProvider(
         api_key="test-key",
@@ -45,6 +46,7 @@ def _elevenlabs_provider(
         output_format="mp3_44100_128",
         timeout_seconds=30,
         max_retries=0,
+        speed=speed,
         audio_store=_store(tmp_path),
         http_client=httpx.AsyncClient(transport=transport),
     )
@@ -93,6 +95,40 @@ async def test_elevenlabs_provider_builds_expected_request(tmp_path: Path) -> No
     # Never sends an Authorization header that could leak via proxies/logs.
     assert captured["authorization"] is None
     assert "eleven_flash_v2_5" in str(captured["content"])
+
+
+async def test_elevenlabs_provider_sends_configured_speed(tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200, content=_MP3_BYTES, headers={"content-type": "audio/mpeg"}
+        )
+
+    provider = _elevenlabs_provider(tmp_path, httpx.MockTransport(handler), speed=1.15)
+    await provider.synthesize(_request())
+
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["voice_settings"] == {"speed": 1.15}
+
+
+async def test_elevenlabs_provider_clamps_out_of_range_speed(tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200, content=_MP3_BYTES, headers={"content-type": "audio/mpeg"}
+        )
+
+    provider = _elevenlabs_provider(tmp_path, httpx.MockTransport(handler), speed=5.0)
+    await provider.synthesize(_request())
+
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["voice_settings"] == {"speed": 1.2}
 
 
 async def test_elevenlabs_provider_raises_on_error(tmp_path: Path) -> None:

@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     elevenlabs_tts_model: str = "eleven_flash_v2_5"
     elevenlabs_tts_timeout_seconds: float = 30.0
     elevenlabs_tts_max_retries: int = 2
+    # Speaking rate sent in voice_settings.speed. ElevenLabs accepts 0.7-1.2;
+    # 1.0 is the natural pace and higher values speak faster.
+    elevenlabs_tts_speed: float = 1.1
 
     # Speech-to-text (STT). Disabled by default; fake provider decodes uploaded
     # bytes as text so local development and tests need no external API. Input

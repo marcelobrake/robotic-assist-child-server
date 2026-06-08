@@ -27,9 +27,15 @@ from ...shared.ids import new_audio_id
 from ...shared.logging import get_logger
 
 _TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
+_MIN_SPEED = 0.7
+_MAX_SPEED = 1.2
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+
+
+def _clamp_speed(speed: float) -> float:
+    return min(max(speed, _MIN_SPEED), _MAX_SPEED)
 
 
 class ElevenLabsTextToSpeechProvider:
@@ -44,6 +50,7 @@ class ElevenLabsTextToSpeechProvider:
         timeout_seconds: float,
         max_retries: int,
         audio_store: AudioStoragePort,
+        speed: float = 1.0,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._api_key = api_key.strip() if api_key else None
@@ -53,6 +60,7 @@ class ElevenLabsTextToSpeechProvider:
         self._output_format = output_format
         self._timeout_seconds = timeout_seconds
         self._max_retries = max(0, max_retries)
+        self._speed = _clamp_speed(speed)
         self._audio_store = audio_store
         self._client = http_client
 
@@ -168,7 +176,11 @@ class ElevenLabsTextToSpeechProvider:
         output_format: str,
     ) -> httpx.Response:
         endpoint = f"{self._base_url}/v1/text-to-speech/{voice_id}"
-        payload = {"text": request.text, "model_id": self._model}
+        payload = {
+            "text": request.text,
+            "model_id": self._model,
+            "voice_settings": {"speed": self._speed},
+        }
         headers = {
             "xi-api-key": self._api_key or "",
             "Content-Type": "application/json",

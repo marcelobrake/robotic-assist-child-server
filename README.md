@@ -321,7 +321,12 @@ ELEVENLABS_VOICE_ID=<id-da-voz>
 ELEVENLABS_TTS_MODEL=eleven_flash_v2_5
 ELEVENLABS_TTS_TIMEOUT_SECONDS=30
 ELEVENLABS_TTS_MAX_RETRIES=2
+ELEVENLABS_TTS_SPEED=1.1
 ```
+
+`ELEVENLABS_TTS_SPEED` controla a velocidade da fala (`voice_settings.speed`),
+limitado ao intervalo aceito pela ElevenLabs (0.7–1.2). `1.0` é o ritmo natural;
+valores maiores deixam o Cubinho falando mais rápido.
 
 A chave de API e os headers (`xi-api-key`) nunca são logados, e nenhum áudio de
 entrada é armazenado. Os testes automatizados nunca chamam a API real (usam
